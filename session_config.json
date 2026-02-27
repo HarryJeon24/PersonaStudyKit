@@ -1,0 +1,21 @@
+{
+  "MAX_TURNS": 5,
+  "SURVEY_MODE": "written",
+  "SURVEY_QUESTIONS": [
+    {
+      "question": "On a scale of 1 to 5, how natural was the bot's conversational flow?",
+      "expected_type": "number",
+      "allowed_options": ["1", "2", "3", "4", "5"]
+    },
+    {
+      "question": "Did the assistant handle your interruptions well? (yes/no)",
+      "expected_type": "options",
+      "allowed_options": ["yes", "no", "y", "n"]
+    },
+    {
+      "question": "Any additional feedback on the response time?",
+      "expected_type": "text",
+      "allowed_options": []
+    }
+  ]
+}

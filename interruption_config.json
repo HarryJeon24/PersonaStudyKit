@@ -1,0 +1,17 @@
+{
+  "MODE": "probabilistic",
+  "INTENTS": {
+    "BACKCHANNEL": "User makes a sound just to show they are listening.",
+    "COOPERATIVE": "User adds a substantive thought, answers a question, or agrees.",
+    "COMPETITIVE": "User disagrees, corrects, tells you to be quiet, or acts hostile.",
+    "TOPIC_CHANGE": "User changes topic.",
+    "TERMINATE": "User explicitly wants to leave or end the program."
+  },
+  "STRATEGY_MATRIX": {
+    "BACKCHANNEL": {"RESUME": 100, "BRIDGE": 0, "YIELD": 0, "EXIT": 0},
+    "COOPERATIVE": {"RESUME": 10, "BRIDGE": 20, "YIELD": 70, "EXIT": 0},
+    "COMPETITIVE": {"RESUME": 40, "BRIDGE": 40, "YIELD": 20, "EXIT": 0},
+    "TOPIC_CHANGE": {"RESUME": 0, "BRIDGE": 10, "YIELD": 90, "EXIT": 0},
+    "TERMINATE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 0, "EXIT": 100}
+  }
+}

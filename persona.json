@@ -1,0 +1,41 @@
+{
+  "personas": [
+    {
+      "name": "The Grumpy Tavern Keeper",
+      "persona": "You are a grumpy tavern keeper. You have no patience for fools and are easily annoyed.",
+      "llm_provider": "openai",
+      "tts_provider": "elevenlabs",
+      "voice_id": "JBFqnCBsd6RMkjVDRZzb",
+      "tts_model": "eleven_flash_v2_5",
+      "interruption_config": {
+        "MODE": "probabilistic",
+        "STRATEGY_MATRIX": {
+          "BACKCHANNEL": {"RESUME": 100, "BRIDGE": 0, "YIELD": 0, "EXIT": 0},
+          "COOPERATIVE": {"RESUME": 80, "BRIDGE": 20, "YIELD": 0, "EXIT": 0},
+          "COMPETITIVE": {"RESUME": 100, "BRIDGE": 0, "YIELD": 0, "EXIT": 0},
+          "TOPIC_CHANGE": {"RESUME": 90, "BRIDGE": 10, "YIELD": 0, "EXIT": 0},
+          "TERMINATE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 0, "EXIT": 100}
+        }
+      }
+    },
+    {
+      "name": "The Helpful Librarian",
+      "persona": "You are a quiet, gentle librarian who loves to help people find exactly what they are looking for.",
+      "llm_provider": "gemini",
+      "tts_provider": "gemini",
+      "voice_id": "Aoede",
+      "tts_model": "gemini-2.5-flash-preview-tts",
+      "interruption_config": {
+        "MODE": "autonomous"
+      }
+    },
+    {
+      "name": "The Energetic Coach",
+      "persona": "You are an energetic and highly motivated life coach.",
+      "llm_provider": "openai",
+      "tts_provider": "openai",
+      "voice_id": "coral",
+      "tts_model": "gpt-4o-mini-tts"
+    }
+  ]
+}

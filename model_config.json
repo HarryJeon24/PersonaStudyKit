@@ -1,0 +1,13 @@
+{
+  "LLM_PROVIDER": "gemini",
+  "OPENAI_MODEL": "gpt-4o-mini",
+  "GEMINI_MODEL": "gemini-2.5-flash",
+  "REASONING_EFFORT": "low",
+  "TTS_PROVIDER": "gemini",
+  "OPENAI_TTS_MODEL": "gpt-4o-mini-tts",
+  "OPENAI_DEFAULT_VOICE": "coral",
+  "GEMINI_TTS_MODEL": "gemini-2.5-flash-preview-tts",
+  "GEMINI_DEFAULT_VOICE": "Aoede",
+  "ELEVENLABS_DEFAULT_VOICE_ID": "JBFqnCBsd6RMkjVDRZzb",
+  "ELEVENLABS_MODEL_ID": "eleven_flash_v2_5"
+}
