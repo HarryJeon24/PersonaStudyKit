@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Persona Study Kit - Platform</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.4/socket.io.js"></script>
+    <style>
+        :root { --bg: #121212; --card: #1e1e1e; --primary: #3d5afe; --text: #e0e0e0; }
+        body { background-color: var(--bg); color: var(--text); font-family: 'Inter', sans-serif; margin: 0; display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 20px;}
+        .card { background: var(--card); padding: 40px; border-radius: 12px; width: 100%; max-width: 800px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+        .hidden { display: none !important; }
+
+        /* Shared Styles */
+        h1, h2, h3 { color: #fff; margin-top: 0; }
+        input, select { width: 100%; padding: 12px; margin: 8px 0; background: #2c2c2c; border: 1px solid #444; border-radius: 6px; color: white; box-sizing: border-box; }
+        .btn-main { width: 100%; padding: 14px; background: var(--primary); border: none; color: white; font-weight: bold; border-radius: 6px; cursor: pointer; margin-top: 10px; }
+        .btn-logout { background: transparent; border: 1px solid #666; color: #aaa; padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 0.8rem;}
+        .btn-logout:hover { background: #333; color: white; border-color: white;}
+
+        /* Auth Styles */
+        .auth-toggle { display: flex; gap: 10px; margin-bottom: 20px; }
+        .auth-toggle button { flex: 1; background: none; border: 1px solid #444; color: #888; padding: 10px; cursor: pointer; border-radius: 6px; }
+        .auth-toggle button.active { border-color: var(--primary); color: white; background: rgba(61, 90, 254, 0.1); }
+        .role-selector { display: flex; gap: 15px; margin-bottom: 15px;}
+
+        /* Dashboard Styles */
+        .upload-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px;}
+        .upload-item { background: #2c2c2c; padding: 10px; border-radius: 6px; border: 1px dashed #555;}
+        .upload-item input[type="file"] { padding: 0; margin: 5px 0 0 0; background: transparent; border: none;}
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 0.9rem;}
+        th, td { text-align: left; padding: 10px; border-bottom: 1px solid #333; }
+        th { color: #81d4fa; }
+
+        /* Documentation Dropdowns */
+        details { background: #252525; border: 1px solid #333; border-radius: 6px; margin-bottom: 10px; }
+        summary { padding: 15px; font-weight: bold; cursor: pointer; color: #81d4fa; outline: none; }
+        .doc-content { padding: 15px; border-top: 1px solid #333; font-size: 0.9rem; color: #ccc; }
+        pre { background: #1a1a1a; padding: 10px; border-radius: 4px; overflow-x: auto; color: #a5d6ff; border: 1px solid #333;}
+        .config-table { width: 100%; font-size: 0.85rem; margin-top: 10px; }
+        .config-table th { color: #fff; background: #333; padding: 8px;}
+        .config-table td { border-bottom: 1px solid #444; padding: 8px;}
+        .alert-box { background: rgba(255, 82, 82, 0.1); border: 1px solid #ff5252; color: #ff5252; padding: 10px; border-radius: 6px; margin-bottom: 15px; font-size: 0.9rem;}
+
+        /* Experiment Styles */
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid #333; padding-bottom: 10px; }
+        .user-tag { font-size: 0.85rem; color: #aaa; background: #333; padding: 4px 10px; border-radius: 20px; margin-right: 10px;}
+        #chat-box { height: 350px; overflow-y: auto; background: #161616; padding: 15px; border-radius: 8px; margin-bottom: 20px; font-size: 0.95rem; line-height: 1.5; }
+        .msg { margin-bottom: 15px; padding: 10px; border-radius: 8px; }
+        .msg-Bot { color: #81d4fa; background: rgba(129, 212, 250, 0.05); }
+        .msg-User { color: #ffffff; background: rgba(255, 255, 255, 0.05); }
+        .mic-container { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+        .visualizer { width: 150px; height: 6px; background: #333; border-radius: 3px; overflow: hidden; }
+        #vol-bar { height: 100%; width: 0%; background: var(--primary); transition: width 0.05s ease-out; }
+        .listening-label { font-size: 0.8rem; color: #666; animation: pulse 2s infinite; }
+        @keyframes pulse { 0% { opacity: 0.5; } 50% { opacity: 1; } 100% { opacity: 0.5; } }
+    </style>
+</head>
+<body>
+
+<div id="home-page" class="card" style="max-width: 500px;">
+    <h1 style="text-align: center; color: #81d4fa;">Persona Study Kit</h1>
+    <p style="text-align: center; color: #aaa; margin-bottom: 30px; line-height: 1.5;">A platform for researching real-time conversational AI interruptions. Connect with your researcher to test custom personas in a live voice environment.</p>
+    <button class="btn-main" onclick="showPage('auth-page'); loadResearchers();">Enter Portal</button>
+</div>
+
+<div id="auth-page" class="card hidden" style="max-width: 500px;">
+    <h2 id="auth-title">Welcome Back</h2>
+    <div class="auth-toggle">
+        <button id="tab-login" class="active" onclick="setAuthMode('login')">Login</button>
+        <button id="tab-signup" onclick="setAuthMode('signup')">Sign Up</button>
+    </div>
+
+    <div id="signup-fields" class="hidden">
+        <div class="role-selector">
+            <label><input type="radio" name="role" value="tester" checked onchange="toggleResearcherSelect()"> I am a Tester</label>
+            <label><input type="radio" name="role" value="researcher" onchange="toggleResearcherSelect()"> I am a Researcher</label>
+        </div>
+        <div id="researcher-select-container">
+            <select id="linked-researcher">
+                <option value="">Select your Researcher (Default System configs)</option>
+            </select>
+        </div>
+    </div>
+
+    <input type="text" id="username" placeholder="Username">
+    <input type="password" id="password" placeholder="Password">
+    <div id="auth-error" style="color: #ff5252; font-size: 0.85rem; margin-top: 5px;"></div>
+
+    <button class="btn-main" onclick="handleAuth()">Continue</button>
+    <button class="btn-logout" style="width: 100%; margin-top: 10px;" onclick="showPage('home-page')">Back</button>
+</div>
+
+<div id="dashboard-page" class="card hidden">
+    <div class="header">
+        <h2>Researcher Dashboard</h2>
+        <div>
+            <span class="user-tag">Logged in as: <span id="dash-username"></span></span>
+            <button class="btn-logout" onclick="location.reload()">Log Out</button>
+        </div>
+    </div>
+
+    <div style="margin-bottom: 30px;">
+        <h3 style="border-bottom: 1px solid #333; padding-bottom: 10px;">Configuration Documentation</h3>
+
+        <div class="alert-box">
+            <strong>Required:</strong> You must place a <code>secrets.json</code> file in the root folder containing your OPENAI_API_KEY, ELEVEN_API_KEY, or GEMINI_API_KEY before running the server.
+        </div>
+
+        <details>
+            <summary>1. persona.json (Characters & Overrides)</summary>
+            <div class="doc-content">
+                Defines the AI characters. You can override global model routing and interruption behavior on a per-persona basis.
+                <pre>
+{
+  "personas": [
+    {
+      "name": "Angry Chef",
+      "persona": "You are a highly aggressive chef running a busy kitchen.",
+      "llm_provider": "openai",
+      "tts_provider": "elevenlabs",
+      "voice_id": "JBFqnCBsd6RMkjVDRZzb",
+      "interruption_config": {
+        "MODE": "probabilistic",
+        "STRATEGY_MATRIX": {
+          "COMPETITIVE": {"RESUME": 100, "BRIDGE": 0, "YIELD": 0, "EXIT": 0}
+        }
+      }
+    }
+  ]
+}</pre>
+            </div>
+        </details>
+
+        <details>
+            <summary>2. session_config.json (Flow & Surveys)</summary>
+            <div class="doc-content">
+                Controls how long the experiment lasts and what questions are asked during the post-session survey.
+                <pre>
+{
+  "MAX_TURNS": 5,
+  "SURVEY_QUESTIONS": [
+    {
+      "question": "Did the bot sound angry?",
+      "expected_type": "options",
+      "allowed_options": ["yes", "no"]
+    }
+  ]
+}</pre>
+            </div>
+        </details>
+
+        <details>
+            <summary>3. model_config.json (Global Providers)</summary>
+            <div class="doc-content">
+                Sets the fallback models and voices if a persona does not specify them explicitly.
+                <pre>
+{
+  "LLM_PROVIDER": "gemini",
+  "GEMINI_MODEL": "gemini-2.5-flash",
+  "TTS_PROVIDER": "openai",
+  "OPENAI_TTS_MODEL": "gpt-4o-mini-tts",
+  "OPENAI_DEFAULT_VOICE": "coral"
+}</pre>
+            </div>
+        </details>
+
+        <details>
+            <summary>4. interruption_config.json (Logic Matrix)</summary>
+            <div class="doc-content">
+                The global probability matrix defining how the bot reacts to being interrupted.
+                <pre>
+{
+  "MODE": "probabilistic",
+  "INTENTS": {
+    "COMPETITIVE": "User disagrees, corrects, or tells you to be quiet."
+  },
+  "STRATEGY_MATRIX": {
+    "COMPETITIVE": {"RESUME": 80, "BRIDGE": 20, "YIELD": 0, "EXIT": 0}
+  }
+}</pre>
+            </div>
+        </details>
+
+        <details>
+            <summary>5. secrets.json (API Keys)</summary>
+            <div class="doc-content">
+                Contains the API keys required to generate responses and voice. Because this is a public platform, <b>do not share this file with anyone</b>. Uploading it stores it securely in the database linked only to your researcher account.
+                <pre>
+{
+  "OPENAI_API_KEY": "sk-proj-...",
+  "ELEVEN_API_KEY": "sk_...",
+  "GEMINI_API_KEY": "AIza..."
+}</pre>
+            </div>
+        </details>
+    </div>
+
+    <div style="margin-bottom: 20px;">
+        <h3 style="border-bottom: 1px solid #333; padding-bottom: 10px;">Import Configurations</h3>
+        <p style="font-size: 0.85rem; color: #888;">Upload your modified JSON files here. Testers mapped to your account will automatically use them.</p>
+        <div class="upload-grid">
+            <div class="upload-item"><label>Session Config</label><input type="file" id="up-session" accept=".json"></div>
+            <div class="upload-item"><label>Model Config</label><input type="file" id="up-model" accept=".json"></div>
+            <div class="upload-item"><label>Interruption Config</label><input type="file" id="up-int" accept=".json"></div>
+            <div class="upload-item"><label>Persona Array</label><input type="file" id="up-persona" accept=".json"></div>
+            <div class="upload-item"><label style="color: #ffb74d;">API Keys (secrets.json)</label><input type="file" id="up-secrets" accept=".json"></div>
+        </div>
+        <button class="btn-main" onclick="uploadConfigs()" style="background: #4a4a4a;">Save Configurations</button>
+    </div>
+
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 40px; border-bottom: 1px solid #333; padding-bottom: 10px;">
+        <h3 style="margin: 0;">Live Results</h3>
+        <button class="btn-logout" style="color: white; border-color: var(--primary);" onclick="exportResults()">Download JSON Export</button>
+    </div>
+    <div style="max-height: 250px; overflow-y: auto; background: #161616; padding: 10px; border-radius: 8px; margin-top: 10px;">
+        <table id="results-table">
+            <tr><th>Tester</th><th>Persona</th><th>Timestamp</th><th>Answers</th></tr>
+        </table>
+    </div>
+</div>
+
+<div id="exp-page" class="card hidden">
+    <div class="header">
+        <div id="current-persona" style="font-weight: bold;">Loading Persona...</div>
+        <div>
+            <span class="user-tag">User: <span id="display-username"></span></span>
+            <button class="btn-logout" onclick="location.reload()">Log Out</button>
+        </div>
+    </div>
+    <div id="status" style="font-size: 0.8rem; margin-bottom: 10px; color: #666;">Ready</div>
+    <div id="chat-box"></div>
+
+    <div class="mic-container">
+        <div class="visualizer"><div id="vol-bar"></div></div>
+        <div id="mic-status" class="listening-label">Microphone Initializing...</div>
+        <button id="start-session-btn" class="btn-main" onclick="startSession()">Start Study Session</button>
+    </div>
+</div>
+
+<div id="survey-page" class="card hidden">
+    <h2>Post-Session Survey</h2>
+    <div id="survey-questions"></div>
+    <button class="btn-main" onclick="submitSurvey()">Submit Results</button>
+</div>
+
+<script>
+    const socket = io();
+    let authMode = 'login';
+    let activeUser = "";
+
+    // --- UI NAVIGATION ---
+    function showPage(pageId) {
+        document.querySelectorAll('.card').forEach(c => c.classList.add('hidden'));
+        document.getElementById(pageId).classList.remove('hidden');
+    }
+
+    // --- AUTH & ROLES ---
+    async function loadResearchers() {
+        const res = await fetch('/api/researchers');
+        const data = await res.json();
+        const sel = document.getElementById('linked-researcher');
+        sel.innerHTML = '<option value="">Select your Researcher (Default System configs)</option>';
+        data.researchers.forEach(r => {
+            sel.innerHTML += `<option value="${r}">${r}</option>`;
+        });
+    }
+
+    function setAuthMode(mode) {
+        authMode = mode;
+        document.getElementById('auth-title').innerText = mode === 'login' ? 'Welcome Back' : 'Create Account';
+        document.getElementById('tab-login').classList.toggle('active', mode === 'login');
+        document.getElementById('tab-signup').classList.toggle('active', mode === 'signup');
+        document.getElementById('signup-fields').classList.toggle('hidden', mode === 'login');
+    }
+
+    function toggleResearcherSelect() {
+        const isTester = document.querySelector('input[name="role"]:checked').value === 'tester';
+        document.getElementById('researcher-select-container').style.display = isTester ? 'block' : 'none';
+    }
+
+    async function handleAuth() {
+        const username = document.getElementById('username').value;
+        const password = document.getElementById('password').value;
+        let role = 'tester';
+        if (!document.getElementById('signup-fields').classList.contains('hidden')) {
+            role = document.querySelector('input[name="role"]:checked').value;
+        }
+        const linked_researcher = document.getElementById('linked-researcher').value;
+
+        const res = await fetch('/api/auth', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ action: authMode, username, password, role, linked_researcher })
+        });
+        const data = await res.json();
+
+        if (data.success) {
+            if (authMode === 'login') {
+                activeUser = username;
+                if (data.role === 'researcher') {
+                    document.getElementById('dash-username').innerText = username;
+                    showPage('dashboard-page');
+                    fetchResults();
+                } else {
+                    document.getElementById('display-username').innerText = username;
+                    showPage('exp-page');
+                    // We must wait for the page to show before setting up the mic
+                    setTimeout(setupAutoMic, 100);
+                }
+            } else {
+                alert("Account created. Please login.");
+                setAuthMode('login');
+                loadResearchers();
+            }
+        } else {
+            document.getElementById('auth-error').innerText = data.msg;
+        }
+    }
+
+    // --- RESEARCHER DASHBOARD ---
+    async function readJSONFile(inputId) {
+        const file = document.getElementById(inputId).files[0];
+        if (!file) return null;
+        return new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onload = e => resolve(JSON.parse(e.target.result));
+            reader.readAsText(file);
+        });
+    }
+
+    async function uploadConfigs() {
+        const payload = {
+            researcher: activeUser,
+            session: await readJSONFile('up-session'),
+            model: await readJSONFile('up-model'),
+            int: await readJSONFile('up-int'),
+            persona: await readJSONFile('up-persona'),
+            secrets: await readJSONFile('up-secrets')
+        };
+
+        await fetch('/api/configs', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload)
+        });
+        alert("Configurations saved successfully! Your testers will now use these settings.");
+    }
+
+    async function fetchResults() {
+        const res = await fetch(`/api/results?researcher=${activeUser}`);
+        const data = await res.json();
+        let html = "<tr><th>Tester</th><th>Persona</th><th>Timestamp</th><th>Answers</th></tr>";
+        data.forEach(r => {
+            html += `<tr><td>${r.username}</td><td>${r.persona}</td><td>${r.timestamp}</td><td><pre style="margin:0; font-size:0.8rem; color:#ccc;">${JSON.stringify(r.answers, null, 2)}</pre></td></tr>`;
+        });
+        document.getElementById('results-table').innerHTML = html;
+    }
+
+    function exportResults() {
+        window.location.href = `/api/export?researcher=${activeUser}`;
+    }
+
+    // --- TESTER AUDIO/EXPERIMENT LOGIC ---
+    let mediaRecorder, botAudioContext, currentSource = null;
+    let audioChunks = [], botPlayStartTime = 0, currentBotDuration = 0;
+    let isBotSpeaking = false, isUserRecording = false, pendingSurvey = null, lastSpeechTime = 0;
+
+    async function setupAutoMic() {
+        try {
+            // Wait for user permission
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+
+            // Fix for Chrome/Safari Autoplay suspensions
+            const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            if (audioCtx.state === 'suspended') {
+                await audioCtx.resume();
+            }
+
+            const analyzer = audioCtx.createAnalyser();
+            const source = audioCtx.createMediaStreamSource(stream);
+            source.connect(analyzer);
+            analyzer.fftSize = 256;
+            const dataArray = new Uint8Array(analyzer.frequencyBinCount);
+
+            document.getElementById('mic-status').innerText = "Auto-listening enabled";
+            document.getElementById('mic-status').style.color = "#666";
+
+            setInterval(() => {
+                analyzer.getByteFrequencyData(dataArray);
+                let avg = dataArray.reduce((a,b) => a+b) / dataArray.length;
+                document.getElementById('vol-bar').style.width = Math.min(avg * 3, 100) + "%";
+
+                if (avg > 12) {
+                    if (isBotSpeaking) {
+                        let percent = (botAudioContext.currentTime - botPlayStartTime) / currentBotDuration;
+                        socket.emit('interrupt_signal', { percent });
+                        if (currentSource) { currentSource.onended = null; currentSource.stop(); isBotSpeaking = false; }
+                    }
+                    if (!isUserRecording) {
+                        isUserRecording = true;
+                        document.getElementById('mic-status').innerText = "🔴 Recording Speech...";
+                        document.getElementById('mic-status').style.color = "#ff5252";
+                        audioChunks = [];
+                        mediaRecorder.start();
+                    }
+                    lastSpeechTime = Date.now();
+                } else if (isUserRecording && Date.now() - lastSpeechTime > 800) {
+                    isUserRecording = false;
+                    document.getElementById('mic-status').innerText = "Auto-listening enabled";
+                    document.getElementById('mic-status').style.color = "#666";
+                    mediaRecorder.stop();
+                }
+            }, 100);
+
+            mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+            mediaRecorder.onstop = () => { socket.emit('user_audio_blob', new Blob(audioChunks, { type: 'audio/webm' })); audioChunks = []; };
+
+        } catch (err) {
+            console.error("Mic access error:", err);
+            alert("Microphone access was denied! Please click the lock icon next to your URL bar, allow Microphone access, and refresh the page.");
+            document.getElementById('mic-status').innerText = "Error: Microphone Denied";
+            document.getElementById('mic-status').style.color = "red";
+        }
+    }
+
+    socket.on('set_persona', data => { document.getElementById('current-persona').innerText = "Persona: " + data.name; });
+    socket.on('status', data => { document.getElementById('status').innerText = "Status: " + data.msg; document.getElementById('status').style.color = data.color; });
+    socket.on('chat', data => {
+        const box = document.getElementById('chat-box');
+        box.innerHTML += `<div class="msg msg-${data.speaker}"><strong>${data.speaker}:</strong> ${data.text}</div>`;
+        box.scrollTop = box.scrollHeight;
+    });
+
+    function startSession() {
+        // Initialize bot AudioContext on direct user click to bypass autoplay restrictions
+        if (!botAudioContext) {
+            botAudioContext = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        if (botAudioContext.state === 'suspended') {
+            botAudioContext.resume();
+        }
+
+        document.getElementById('start-session-btn').classList.add('hidden');
+        document.getElementById('chat-box').innerHTML = "";
+        socket.emit('start_experiment', { username: activeUser });
+    }
+
+    socket.on('play_audio', async (data) => {
+        isBotSpeaking = true;
+        currentBotDuration = data.duration_est;
+        pendingSurvey = data.is_final ? data.survey : null;
+
+        const audioData = atob(data.audio_b64);
+        const arrayBuffer = new Uint8Array(audioData.length).map((_, i) => audioData.charCodeAt(i)).buffer;
+        const buffer = await botAudioContext.decodeAudioData(arrayBuffer);
+
+        currentSource = botAudioContext.createBufferSource();
+        currentSource.buffer = buffer;
+        currentSource.connect(botAudioContext.destination);
+        currentSource.start(0);
+        botPlayStartTime = botAudioContext.currentTime;
+
+        currentSource.onended = () => {
+            isBotSpeaking = false;
+            if (pendingSurvey) {
+                showPage('survey-page');
+                let html = "";
+                pendingSurvey.forEach((q, i) => { html += `<div style="margin-bottom:15px;"><p>${q.question}</p><input type="text" id="ans-${i}"></div>`; });
+                document.getElementById('survey-questions').innerHTML = html;
+                pendingSurvey = null;
+            }
+        };
+    });
+
+    function submitSurvey() {
+        let results = {};
+        document.querySelectorAll('#survey-questions input').forEach((input, i) => { results[`Question_${i+1}`] = input.value; });
+        socket.emit('submit_survey', results);
+        showPage('exp-page');
+        document.getElementById('chat-box').innerHTML = "";
+    }
+</script>
+</body>
+</html>

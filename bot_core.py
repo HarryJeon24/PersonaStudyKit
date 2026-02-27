@@ -10,6 +10,7 @@ import re
 import io
 import json
 import copy
+import hashlib
 from datetime import datetime
 from openai import OpenAI
 from elevenlabs.client import ElevenLabs
@@ -60,7 +61,51 @@ def gui_print(text, color="white"):
         ui_queue.put({"type": "status", "text": clean_text.strip(), "color": color})
 
 
-# --- CONFIGURATION LOADING ---
+# --- CONFIGURATION, AUTH, & PROGRESS LOADING ---
+
+def hash_password(password):
+    """Creates a basic SHA-256 hash of the password."""
+    return hashlib.sha256(password.encode()).hexdigest()
+
+
+def load_credentials(filename="user_credentials.json"):
+    if os.path.exists(filename):
+        try:
+            with open(filename, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as e:
+            gui_print(f"{Fore.RED}Error loading credentials: {e}", color="red")
+    return {}
+
+
+def save_credentials(credentials_data, filename="user_credentials.json"):
+    try:
+        with open(filename, "w", encoding="utf-8") as f:
+            json.dump(credentials_data, f, indent=4)
+    except Exception as e:
+        gui_print(f"{Fore.RED}Error saving credentials: {e}", color="red")
+
+
+def register_user(username, password):
+    creds = load_credentials()
+    if username in creds:
+        return False, "Username already exists."
+    if not username or not password:
+        return False, "Username and password cannot be empty."
+
+    creds[username] = hash_password(password)
+    save_credentials(creds)
+    return True, "User registered successfully."
+
+
+def authenticate_user(username, password):
+    creds = load_credentials()
+    if username not in creds:
+        return False, "Username not found."
+    if creds[username] != hash_password(password):
+        return False, "Incorrect password."
+    return True, "Login successful."
+
 
 def load_api_keys(filename="secrets.json"):
     if not os.path.exists(filename):
@@ -178,6 +223,24 @@ def load_personas(filename="persona.json"):
     return default_personas
 
 
+def load_progress(filename="user_progress.json"):
+    if os.path.exists(filename):
+        try:
+            with open(filename, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as e:
+            gui_print(f"{Fore.RED}Error loading user progress: {e}", color="red")
+    return {}
+
+
+def save_progress(progress_data, filename="user_progress.json"):
+    try:
+        with open(filename, "w", encoding="utf-8") as f:
+            json.dump(progress_data, f, indent=4)
+    except Exception as e:
+        gui_print(f"{Fore.RED}Error saving user progress: {e}", color="red")
+
+
 # Initialize Keys & Configs
 OPENAI_API_KEY, ELEVEN_API_KEY, GEMINI_API_KEY = load_api_keys("secrets.json")
 
@@ -283,7 +346,6 @@ STEP 2: CHOOSE STRATEGY & WRITE DIALOGUE BASED ON YOUR CHARACTER
 - [EXIT]: (End Session). Used for TERMINATE. -> [DIALOGUE]: A brief goodbye message ending with the tag [EXIT].
 """
 
-    # Add rigorous hardcoded matrices if we aren't autonomous
     if mode in ["probabilistic", "deterministic"]:
         matrix = int_config.get("STRATEGY_MATRIX", {})
         mapping_lines = []
@@ -560,7 +622,7 @@ class ChatBotSystem:
             return None
 
 
-def run_experiment(gui_queue=None, gui_input_event=None, gui_input_dict=None):
+def run_experiment(gui_queue=None, gui_input_event=None, gui_input_dict=None, username="guest"):
     """Main execution loop. Pass threading variables if running via GUI."""
     global ui_queue, ui_input_event, ui_input_state, session_raw_logs
     ui_queue = gui_queue
@@ -569,16 +631,24 @@ def run_experiment(gui_queue=None, gui_input_event=None, gui_input_dict=None):
 
     bot = ChatBotSystem()
     gui_print(
-        f"{Fore.GREEN}--- System Ready (LLM: {LLM_PROVIDER.upper()} | TTS: {TTS_PROVIDER.upper()}) ---",
+        f"{Fore.GREEN}--- System Ready (User: {username} | LLM: {LLM_PROVIDER.upper()} | TTS: {TTS_PROVIDER.upper()}) ---",
         color="#00FF00")
 
     personas_list = load_personas("persona.json")
+    user_progress_data = load_progress()
+    completed_personas = user_progress_data.get(username, [])
 
     # --- OUTER LOOP: ITERATING THROUGH ALL PERSONAS ---
     for persona_data in personas_list:
-        session_raw_logs = []  # Reset the logs for the new session
-
         persona_name = persona_data.get("name", "Unknown Persona")
+
+        # Check if the user has already completed this persona
+        if persona_name in completed_personas:
+            gui_print(f"\n{Fore.YELLOW}System: Skipping {persona_name} - already completed by {username}.",
+                      color="yellow")
+            continue
+
+        session_raw_logs = []  # Reset the logs for the new session
         current_persona = persona_data.get("persona", "You are a helpful assistant.")
 
         # Determine which LLM & TTS provider to use for this persona
@@ -737,19 +807,14 @@ def run_experiment(gui_queue=None, gui_input_event=None, gui_input_dict=None):
                 full_response = "I'm having trouble thinking right now."
 
             # --- ROBUST TAG PARSING LOGIC ---
-            # Find all bracketed uppercase strings like [YIELD] or [INTENT]
             found_tags = [t.upper() for t in re.findall(r'\[([a-zA-Z_]+)\]', full_response)]
-
             valid_intents = ["BACKCHANNEL", "COOPERATIVE", "COMPETITIVE", "TOPIC_CHANGE", "TERMINATE"]
             valid_strategies = ["RESUME", "BRIDGE", "YIELD", "EXIT", "OVERRULE"]
 
-            # Safely grab the first real intent/strategy found, or default safely
             intent = next((t for t in found_tags if t in valid_intents), "UNKNOWN")
             strategy = next((t for t in found_tags if t in valid_strategies), "YIELD")
 
-            # Clean all brackets out of the dialogue text so TTS never reads them aloud
             gpt_content = re.sub(r'\[.*?\]', '', full_response).strip()
-
             should_exit = "EXIT" in found_tags or strategy == "EXIT"
             final_text_to_speak = gpt_content
 
@@ -764,8 +829,6 @@ def run_experiment(gui_queue=None, gui_input_event=None, gui_input_dict=None):
 
             if final_text_to_speak.strip():
                 gui_print(f"{Fore.CYAN}Bot: {final_text_to_speak}", color="cyan")
-
-                # FIX: We now append the raw `full_response` (with tags) to keep the LLM's memory formatting clean
                 conversation_history.append({"role": "assistant", "content": full_response})
 
                 audio_res = fetch_audio(final_text_to_speak, current_tts_provider, current_voice_id, current_tts_model)
@@ -930,6 +993,7 @@ def run_experiment(gui_queue=None, gui_input_event=None, gui_input_dict=None):
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             session_data = {
                 "timestamp": timestamp,
+                "username": username,
                 "persona": persona_name,
                 "dialogue": conversation_history,
                 "raw_logs": session_raw_logs.copy(),
@@ -955,15 +1019,21 @@ def run_experiment(gui_queue=None, gui_input_event=None, gui_input_dict=None):
             except Exception as e:
                 gui_print(f"{Fore.RED}System Error (Saving Survey): {e}", color="red")
 
+            # Update User Progress
+            completed_personas.append(persona_name)
+            user_progress_data[username] = completed_personas
+            save_progress(user_progress_data)
+
         gui_print(f"{Fore.GREEN}System: Session with {persona_name} completely terminated.", color="#00FF00")
 
     # Outer Loop Ends Here
-    gui_print(f"\n{Fore.GREEN}System: All personas in the list have been completed. Shutting down system.",
-              color="#00FF00")
+    gui_print(
+        f"\n{Fore.GREEN}System: All personas in the list have been completed for user '{username}'. Shutting down system.",
+        color="#00FF00")
 
 
 if __name__ == "__main__":
     try:
-        run_experiment()
+        run_experiment(username="CLI_Guest")
     except KeyboardInterrupt:
         print("\nStopped.")
