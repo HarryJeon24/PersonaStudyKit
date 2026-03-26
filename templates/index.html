@@ -575,7 +575,7 @@
                 let avg = dataArray.reduce((a,b) => a+b) / dataArray.length;
                 document.getElementById('vol-bar').style.width = Math.min(avg * 3, 100) + "%";
 
-                if (avg > 12) {
+                if (avg > 25) {
                     if (isBotSpeaking) {
                         let percent = (botAudioContext.currentTime - botPlayStartTime) / currentBotDuration;
                         socket.emit('interrupt_signal', { percent });
@@ -642,6 +642,11 @@
     });
 
     socket.on('play_audio', async (data) => {
+        // Stop any currently playing audio to prevent overlap
+        if (currentSource) {
+            try { currentSource.onended = null; currentSource.stop(); } catch(e) {}
+            currentSource = null;
+        }
         isBotSpeaking = true;
         currentBotDuration = data.duration_est;
         pendingSurvey = data.survey || null;
