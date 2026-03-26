@@ -279,6 +279,9 @@ REQUIRED_CONSECUTIVE_FRAMES = audio_cfg["REQUIRED_CONSECUTIVE_FRAMES"]
 MAX_TURNS = session_cfg["MAX_TURNS"]
 SURVEY_MODE = session_cfg.get("SURVEY_MODE", "written").lower()
 SURVEY_QUESTIONS = session_cfg.get("SURVEY_QUESTIONS", [])
+SURVEY_TYPE = session_cfg.get("SURVEY_TYPE", "individual").lower()
+SET_SIZE = session_cfg.get("SET_SIZE", 1)
+SET_LABELS = session_cfg.get("SET_LABELS", [])
 
 # Model Assignments
 LLM_PROVIDER = model_cfg.get("LLM_PROVIDER", "openai").lower()
@@ -638,6 +641,12 @@ def run_experiment(gui_queue=None, gui_input_event=None, gui_input_dict=None, us
     user_progress_data = load_progress()
     completed_personas = user_progress_data.get(username, [])
 
+    # --- COMPARATIVE SET TRACKING ---
+    is_comparative = SURVEY_TYPE == "comparative" and SET_SIZE > 1
+    set_dialogues = []
+    set_raw_logs_list = []
+    set_persona_names = []
+
     # --- OUTER LOOP: ITERATING THROUGH ALL PERSONAS ---
     for persona_data in personas_list:
         persona_name = persona_data.get("name", "Unknown Persona")
@@ -649,6 +658,13 @@ def run_experiment(gui_queue=None, gui_input_event=None, gui_input_dict=None, us
             continue
 
         session_raw_logs = []  # Reset the logs for the new session
+
+        # Show set label if in comparative mode
+        if is_comparative:
+            set_pos = len(set_persona_names)
+            label = SET_LABELS[set_pos] if set_pos < len(SET_LABELS) else f"Session {set_pos + 1}"
+            gui_print(f"\n{Fore.MAGENTA}System: [{label}] ({set_pos + 1}/{SET_SIZE})", color="magenta")
+
         current_persona = persona_data.get("persona", "You are a helpful assistant.")
 
         # Determine which LLM & TTS provider to use for this persona
@@ -913,10 +929,27 @@ def run_experiment(gui_queue=None, gui_input_event=None, gui_input_dict=None, us
                 gui_print(f"{Fore.RED}System: Session closure complete. Moving to survey.", color="red")
                 break
 
-        # --- ENHANCED SURVEY LOOP ---
+        # --- ACCUMULATE SET DATA ---
+        set_dialogues.append(conversation_history[:])
+        set_raw_logs_list.append(session_raw_logs.copy())
+        set_persona_names.append(persona_name)
+
+        if is_comparative and len(set_persona_names) < SET_SIZE:
+            # Set not complete yet - mark progress and continue to next persona
+            completed_personas.append(persona_name)
+            user_progress_data[username] = completed_personas
+            save_progress(user_progress_data)
+            gui_print(f"{Fore.GREEN}System: Session with {persona_name} complete. Moving to next condition...", color="#00FF00")
+            continue
+
+        # --- SURVEY LOOP (runs after individual persona OR after full comparative set) ---
         if SURVEY_QUESTIONS:
-            gui_print(f"\n{Fore.MAGENTA}System: --- STARTING POST-SESSION SURVEY ({SURVEY_MODE.upper()}) ---",
-                      color="magenta")
+            if is_comparative:
+                labels = SET_LABELS if len(SET_LABELS) >= len(set_persona_names) else [f"Session {j+1}" for j in range(len(set_persona_names))]
+                gui_print(f"\n{Fore.MAGENTA}System: --- COMPARATIVE SURVEY (Comparing: {', '.join(labels)}) ---", color="magenta")
+            else:
+                gui_print(f"\n{Fore.MAGENTA}System: --- STARTING POST-SESSION SURVEY ({SURVEY_MODE.upper()}) ---", color="magenta")
+
             survey_answers = {}
 
             for i, q_data in enumerate(SURVEY_QUESTIONS):
@@ -925,6 +958,7 @@ def run_experiment(gui_queue=None, gui_input_event=None, gui_input_dict=None, us
                 q_options = q_data.get("allowed_options", [])
 
                 if SURVEY_MODE == "voice":
+                    # Voice mode - only supports simple answers (not matrix)
                     gui_print(f"{Fore.CYAN}Survey Bot: {q_text}", color="cyan")
 
                     if TTS_PROVIDER == "openai":
@@ -945,30 +979,83 @@ def run_experiment(gui_queue=None, gui_input_event=None, gui_input_dict=None, us
                     gui_print(f"{Fore.WHITE}User Answer: {answer_text}", color="white")
                     survey_answers[f"Question_{i + 1}"] = {"question": q_text, "answer": answer_text}
 
-                else:  # Written Mode
+                elif is_comparative and q_type == "matrix_likert":
+                    # Matrix Likert: ask user to rate each style on the scale
+                    reverse_note = " [Reverse Coded]" if q_data.get("reverse_coded") else ""
+                    scale_vals = q_options if q_options else ["1", "2", "3", "4", "5"]
+                    gui_print(f"\n{Fore.CYAN}Q{i+1}. {q_text}{reverse_note}", color="cyan")
+                    gui_print(f"   Scale: {' / '.join(scale_vals)} (1=Strongly Disagree, 5=Strongly Agree)", color="cyan")
+                    ratings = {}
+                    for li, label in enumerate(labels):
+                        valid_answer = False
+                        while not valid_answer:
+                            if ui_queue and ui_input_event and ui_input_state is not None:
+                                gui_print(f"   Rate {label}:", color="white")
+                                ui_queue.put({"type": "survey_prompt"})
+                                ui_input_event.wait()
+                                user_input = ui_input_state.get("answer", "").strip()
+                                ui_input_event.clear()
+                                ui_queue.put({"type": "hide_survey"})
+                                gui_print(f"User Answer: {user_input}")
+                            else:
+                                user_input = input(f"   Rate {label} ({'/'.join(scale_vals)}): ").strip()
+
+                            if user_input in scale_vals:
+                                valid_answer = True
+                                ratings[label] = user_input
+                            else:
+                                gui_print(f"{Fore.RED}   Please enter one of: {scale_vals}", color="red")
+
+                    survey_answers[f"Question_{i + 1}"] = {"question": q_text, "type": "matrix_likert", "ratings": ratings}
+
+                elif is_comparative and q_type == "forced_choice":
+                    # Forced choice: pick one of the set labels
+                    gui_print(f"\n{Fore.CYAN}Q{i+1}. {q_text}", color="cyan")
+                    for li, label in enumerate(labels):
+                        gui_print(f"   {li+1}) {label}", color="white")
                     valid_answer = False
                     while not valid_answer:
-                        hint = f" ({'/'.join(q_options)})" if q_type == "options" else ""
-                        gui_print(f"\n{Fore.CYAN}{q_text}{hint}", color="cyan")
-
-                        # --- NEW UI INPUT HANDLING ---
                         if ui_queue and ui_input_event and ui_input_state is not None:
                             ui_queue.put({"type": "survey_prompt"})
-                            ui_input_event.wait()  # Pauses execution until GUI says Submit
+                            ui_input_event.wait()
                             user_input = ui_input_state.get("answer", "").strip()
                             ui_input_event.clear()
                             ui_queue.put({"type": "hide_survey"})
-                            gui_print(f"User Answer: {user_input}")  # Echo to chat
+                            gui_print(f"User Answer: {user_input}")
+                        else:
+                            user_input = input(f"   Your choice (1-{len(labels)} or label name): ").strip()
+
+                        # Accept number or label name
+                        if user_input.isdigit() and 1 <= int(user_input) <= len(labels):
+                            valid_answer = True
+                            survey_answers[f"Question_{i + 1}"] = {"question": q_text, "type": "forced_choice", "choice": labels[int(user_input) - 1]}
+                        elif user_input in labels:
+                            valid_answer = True
+                            survey_answers[f"Question_{i + 1}"] = {"question": q_text, "type": "forced_choice", "choice": user_input}
+                        else:
+                            gui_print(f"{Fore.RED}   Invalid choice. Enter a number 1-{len(labels)} or a label name.", color="red")
+
+                else:  # Written Mode for text, options, number
+                    valid_answer = False
+                    while not valid_answer:
+                        hint = f" ({'/'.join(q_options)})" if q_type == "options" else ""
+                        gui_print(f"\n{Fore.CYAN}Q{i+1}. {q_text}{hint}", color="cyan")
+
+                        if ui_queue and ui_input_event and ui_input_state is not None:
+                            ui_queue.put({"type": "survey_prompt"})
+                            ui_input_event.wait()
+                            user_input = ui_input_state.get("answer", "").strip()
+                            ui_input_event.clear()
+                            ui_queue.put({"type": "hide_survey"})
+                            gui_print(f"User Answer: {user_input}")
                         else:
                             user_input = input(f"{Fore.WHITE}Your Answer: ").strip()
-                        # -----------------------------
 
                         if q_type == "number":
                             if user_input.isdigit() or (
                                     user_input.replace('.', '', 1).isdigit() and user_input.count('.') < 2):
                                 if q_options and user_input not in q_options:
-                                    gui_print(f"{Fore.RED}System: Please enter one of the allowed numbers: {q_options}",
-                                              color="red")
+                                    gui_print(f"{Fore.RED}System: Please enter one of the allowed numbers: {q_options}", color="red")
                                 else:
                                     valid_answer = True
                             else:
@@ -979,26 +1066,46 @@ def run_experiment(gui_queue=None, gui_input_event=None, gui_input_dict=None, us
                                 gui_print(f"{Fore.RED}System: Invalid input. Allowed options: {q_options}", color="red")
                             else:
                                 valid_answer = True
-
                         else:
                             valid_answer = True
 
                         if valid_answer:
                             survey_answers[f"Question_{i + 1}"] = {"question": q_text, "answer": user_input}
 
-            gui_print(f"\n{Fore.GREEN}System: --- SURVEY RESULTS FOR {persona_name.upper()} ---", color="#00FF00")
+            gui_print(f"\n{Fore.GREEN}System: --- SURVEY RESULTS ---", color="#00FF00")
             gui_print(json.dumps(survey_answers, indent=4), color="#00FF00")
 
             # --- HISTORICAL SAVING ---
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            session_data = {
-                "timestamp": timestamp,
-                "username": username,
-                "persona": persona_name,
-                "dialogue": conversation_history,
-                "raw_logs": session_raw_logs.copy(),
-                "answers": survey_answers
-            }
+
+            if is_comparative:
+                # Build combined dialogue and logs keyed by set labels
+                combined_dialogue = {}
+                combined_logs = {}
+                for j, p_name in enumerate(set_persona_names):
+                    lbl = labels[j] if j < len(labels) else f"Session {j+1}"
+                    combined_dialogue[lbl] = set_dialogues[j] if j < len(set_dialogues) else []
+                    combined_logs[lbl] = set_raw_logs_list[j] if j < len(set_raw_logs_list) else []
+
+                session_data = {
+                    "timestamp": timestamp,
+                    "username": username,
+                    "survey_type": "comparative",
+                    "personas": set_persona_names[:],
+                    "set_labels": labels[:],
+                    "dialogue": combined_dialogue,
+                    "raw_logs": combined_logs,
+                    "answers": survey_answers
+                }
+            else:
+                session_data = {
+                    "timestamp": timestamp,
+                    "username": username,
+                    "persona": persona_name,
+                    "dialogue": conversation_history,
+                    "raw_logs": session_raw_logs.copy(),
+                    "answers": survey_answers
+                }
 
             survey_file = "survey_results.json"
             existing_data = []
@@ -1023,6 +1130,12 @@ def run_experiment(gui_queue=None, gui_input_event=None, gui_input_dict=None, us
             completed_personas.append(persona_name)
             user_progress_data[username] = completed_personas
             save_progress(user_progress_data)
+
+        # Reset set tracking after survey
+        if is_comparative:
+            set_dialogues = []
+            set_raw_logs_list = []
+            set_persona_names = []
 
         gui_print(f"{Fore.GREEN}System: Session with {persona_name} completely terminated.", color="#00FF00")
 

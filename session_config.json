@@ -1,19 +1,38 @@
 {
   "MAX_TURNS": 5,
   "SURVEY_MODE": "written",
+  "SURVEY_TYPE": "comparative",
+  "SET_SIZE": 3,
+  "SET_LABELS": ["Style A", "Style B", "Style C"],
   "SURVEY_QUESTIONS": [
     {
-      "question": "On a scale of 1 to 5, how natural was the bot's conversational flow?",
-      "expected_type": "number",
+      "question": "The way the agent reacted when I interrupted it felt human-like and natural.",
+      "expected_type": "matrix_likert",
       "allowed_options": ["1", "2", "3", "4", "5"]
     },
     {
-      "question": "Did the assistant handle your interruptions well? (yes/no)",
-      "expected_type": "options",
-      "allowed_options": ["yes", "no", "y", "n"]
+      "question": "The agent's behavior during the interruption remained consistent with the specific job/role it was playing.",
+      "expected_type": "matrix_likert",
+      "allowed_options": ["1", "2", "3", "4", "5"]
     },
     {
-      "question": "Any additional feedback on the response time?",
+      "question": "The transition of speaking turns between myself and the agent felt smooth.",
+      "expected_type": "matrix_likert",
+      "allowed_options": ["1", "2", "3", "4", "5"]
+    },
+    {
+      "question": "It took a high amount of effort to successfully gain the conversational floor and communicate my goal.",
+      "expected_type": "matrix_likert",
+      "allowed_options": ["1", "2", "3", "4", "5"],
+      "reverse_coded": true
+    },
+    {
+      "question": "Overall, which interaction style felt the most appropriate for this specific character?",
+      "expected_type": "forced_choice",
+      "allowed_options": []
+    },
+    {
+      "question": "Briefly explain why you chose that style.",
       "expected_type": "text",
       "allowed_options": []
     }

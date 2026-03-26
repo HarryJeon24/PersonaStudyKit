@@ -54,6 +54,24 @@
         #vol-bar { height: 100%; width: 0%; background: var(--primary); transition: width 0.05s ease-out; }
         .listening-label { font-size: 0.8rem; color: #666; animation: pulse 2s infinite; }
         @keyframes pulse { 0% { opacity: 0.5; } 50% { opacity: 1; } 100% { opacity: 0.5; } }
+
+        /* Comparative Survey Styles */
+        .matrix-table { width: 100%; border-collapse: collapse; margin: 15px 0 25px 0; }
+        .matrix-table th { background: #2c2c2c; padding: 10px 8px; text-align: center; font-size: 0.85rem; color: #81d4fa; border: 1px solid #444; }
+        .matrix-table th:first-child { text-align: left; width: 40%; }
+        .matrix-table td { padding: 8px; text-align: center; border: 1px solid #333; }
+        .matrix-table td:first-child { text-align: left; color: #ccc; font-size: 0.85rem; }
+        .matrix-table tr:hover { background: rgba(61, 90, 254, 0.05); }
+        .likert-group { display: flex; justify-content: center; gap: 6px; }
+        .likert-group label { display: flex; flex-direction: column; align-items: center; cursor: pointer; font-size: 0.75rem; color: #888; }
+        .likert-group input[type="radio"] { margin: 0; cursor: pointer; }
+        .forced-choice-group { display: flex; gap: 15px; flex-wrap: wrap; margin: 10px 0; }
+        .forced-choice-group label { display: flex; align-items: center; gap: 6px; padding: 10px 16px; background: #2c2c2c; border: 1px solid #444; border-radius: 6px; cursor: pointer; transition: all 0.2s; }
+        .forced-choice-group label:hover { border-color: var(--primary); }
+        .forced-choice-group input[type="radio"]:checked + span { color: var(--primary); font-weight: bold; }
+        .survey-question-block { margin-bottom: 20px; }
+        .survey-question-block p { color: #e0e0e0; margin-bottom: 8px; }
+        .reverse-coded-note { font-size: 0.75rem; color: #ff9800; font-style: italic; }
     </style>
 </head>
 <body>
@@ -135,18 +153,50 @@
         <details>
             <summary>2. session_config.json (Flow & Surveys)</summary>
             <div class="doc-content">
-                Controls how long the experiment lasts and what questions are asked during the post-session survey.
+                Controls how long the experiment lasts and what questions are asked during the post-session survey. Supports two modes:
+                <br><br>
+                <strong>Individual Mode</strong> (default): One survey after each persona session.
                 <pre>
 {
   "MAX_TURNS": 5,
+  "SURVEY_TYPE": "individual",
+  "SURVEY_QUESTIONS": [
+    { "question": "Did the bot sound angry?", "expected_type": "options", "allowed_options": ["yes", "no"] }
+  ]
+}</pre>
+                <strong>Comparative Mode</strong>: Groups personas into sets of <code>SET_SIZE</code>. One comparative survey appears after the full set is completed. Use <code>SET_LABELS</code> to name each condition.
+                <pre>
+{
+  "MAX_TURNS": 5,
+  "SURVEY_TYPE": "comparative",
+  "SET_SIZE": 3,
+  "SET_LABELS": ["Style A", "Style B", "Style C"],
   "SURVEY_QUESTIONS": [
     {
-      "question": "Did the bot sound angry?",
-      "expected_type": "options",
-      "allowed_options": ["yes", "no"]
+      "question": "The reaction felt natural.",
+      "expected_type": "matrix_likert",
+      "allowed_options": ["1","2","3","4","5"]
+    },
+    {
+      "question": "Which style was best for this character?",
+      "expected_type": "forced_choice",
+      "allowed_options": []
+    },
+    {
+      "question": "Explain your choice.",
+      "expected_type": "text",
+      "allowed_options": []
     }
   ]
 }</pre>
+                <table class="config-table">
+                    <tr><th>Question Type</th><th>Mode</th><th>Description</th></tr>
+                    <tr><td><code>matrix_likert</code></td><td>Comparative</td><td>Rate each style side-by-side on a Likert scale. Add <code>"reverse_coded": true</code> for reverse-scored items.</td></tr>
+                    <tr><td><code>forced_choice</code></td><td>Comparative</td><td>Pick one of the SET_LABELS as the best.</td></tr>
+                    <tr><td><code>number</code></td><td>Both</td><td>Numeric input, validated against allowed_options.</td></tr>
+                    <tr><td><code>options</code></td><td>Both</td><td>Select from a predefined list.</td></tr>
+                    <tr><td><code>text</code></td><td>Both</td><td>Free-form text response.</td></tr>
+                </table>
             </div>
         </details>
 
@@ -238,8 +288,9 @@
     </div>
 </div>
 
-<div id="survey-page" class="card hidden">
-    <h2>Post-Session Survey</h2>
+<div id="survey-page" class="card hidden" style="max-width: 900px;">
+    <h2 id="survey-title">Post-Session Survey</h2>
+    <p id="survey-subtitle" style="color: #aaa; font-size: 0.9rem; margin-bottom: 20px;"></p>
     <div id="survey-questions"></div>
     <button class="btn-main" onclick="submitSurvey()">Submit Results</button>
 </div>
@@ -365,6 +416,7 @@
     let mediaRecorder, botAudioContext, currentSource = null;
     let audioChunks = [], botPlayStartTime = 0, currentBotDuration = 0;
     let isBotSpeaking = false, isUserRecording = false, pendingSurvey = null, lastSpeechTime = 0;
+    let pendingSurveyMeta = null; // stores survey_type, set_labels, set_personas, set_size
 
     async function setupAutoMic() {
         try {
@@ -388,6 +440,15 @@
             document.getElementById('mic-status').style.color = "#666";
 
             setInterval(() => {
+                // Don't process mic input when on the survey page
+                if (!document.getElementById('exp-page') || document.getElementById('exp-page').classList.contains('hidden')) {
+                    if (isUserRecording && mediaRecorder && mediaRecorder.state === 'recording') {
+                        isUserRecording = false;
+                        mediaRecorder.stop();
+                    }
+                    return;
+                }
+
                 analyzer.getByteFrequencyData(dataArray);
                 let avg = dataArray.reduce((a,b) => a+b) / dataArray.length;
                 document.getElementById('vol-bar').style.width = Math.min(avg * 3, 100) + "%";
@@ -425,7 +486,10 @@
         }
     }
 
-    socket.on('set_persona', data => { document.getElementById('current-persona').innerText = "Persona: " + data.name; });
+    socket.on('set_persona', data => {
+        document.getElementById('current-persona').innerText = "Persona: " + data.name;
+        document.getElementById('chat-box').innerHTML = "";
+    });
     socket.on('status', data => { document.getElementById('status').innerText = "Status: " + data.msg; document.getElementById('status').style.color = data.color; });
     socket.on('chat', data => {
         const box = document.getElementById('chat-box');
@@ -447,10 +511,24 @@
         socket.emit('start_experiment', { username: activeUser });
     }
 
+    socket.on('stop_audio_playback', () => {
+        if (isBotSpeaking && currentSource) {
+            currentSource.onended = null;
+            currentSource.stop();
+            isBotSpeaking = false;
+        }
+    });
+
     socket.on('play_audio', async (data) => {
         isBotSpeaking = true;
         currentBotDuration = data.duration_est;
-        pendingSurvey = data.is_final ? data.survey : null;
+        pendingSurvey = data.survey || null;
+        pendingSurveyMeta = data.survey ? {
+            survey_type: data.survey_type || "individual",
+            set_size: data.set_size || 1,
+            set_labels: data.set_labels || [],
+            set_personas: data.set_personas || []
+        } : null;
 
         const audioData = atob(data.audio_b64);
         const arrayBuffer = new Uint8Array(audioData.length).map((_, i) => audioData.charCodeAt(i)).buffer;
@@ -464,19 +542,148 @@
 
         currentSource.onended = () => {
             isBotSpeaking = false;
-            if (pendingSurvey) {
-                showPage('survey-page');
-                let html = "";
-                pendingSurvey.forEach((q, i) => { html += `<div style="margin-bottom:15px;"><p>${q.question}</p><input type="text" id="ans-${i}"></div>`; });
-                document.getElementById('survey-questions').innerHTML = html;
+            if (pendingSurvey && pendingSurveyMeta) {
+                renderSurvey(pendingSurvey, pendingSurveyMeta);
                 pendingSurvey = null;
+                pendingSurveyMeta = null;
             }
         };
     });
 
+    function stopMicAndAudio() {
+        // Stop any ongoing recording
+        if (isUserRecording && mediaRecorder && mediaRecorder.state === 'recording') {
+            isUserRecording = false;
+            mediaRecorder.stop();
+        }
+        // Stop any bot audio still playing
+        if (isBotSpeaking && currentSource) {
+            currentSource.onended = null;
+            currentSource.stop();
+            isBotSpeaking = false;
+        }
+    }
+
+    function renderSurvey(questions, meta) {
+        stopMicAndAudio();
+        showPage('survey-page');
+        const isComparative = meta.survey_type === "comparative" && meta.set_size > 1;
+        const labels = meta.set_labels.length ? meta.set_labels : meta.set_personas.map((_, i) => `Session ${i+1}`);
+
+        if (isComparative) {
+            document.getElementById('survey-title').innerText = "Comparative Survey";
+            const personaNames = meta.set_personas.join(", ");
+            document.getElementById('survey-subtitle').innerText = `Please compare the ${meta.set_size} interaction styles you just experienced.`;
+        } else {
+            document.getElementById('survey-title').innerText = "Post-Session Survey";
+            document.getElementById('survey-subtitle').innerText = "";
+        }
+
+        let html = "";
+        questions.forEach((q, i) => {
+            if (isComparative && q.expected_type === "matrix_likert") {
+                // Matrix Likert: one row per label, columns for scale values
+                const scaleValues = q.allowed_options && q.allowed_options.length ? q.allowed_options : ["1","2","3","4","5"];
+                const reverseCoded = q.reverse_coded ? '<span class="reverse-coded-note"> [Reverse Coded]</span>' : '';
+                html += `<div class="survey-question-block">
+                    <p><strong>Q${i+1}.</strong> ${q.question}${reverseCoded}</p>
+                    <table class="matrix-table">
+                        <thead><tr><th></th>`;
+                scaleValues.forEach(v => { html += `<th>${v}</th>`; });
+                html += `</tr></thead><tbody>`;
+                labels.forEach((label, li) => {
+                    html += `<tr><td>${label}</td>`;
+                    scaleValues.forEach(v => {
+                        html += `<td><input type="radio" name="q${i}_label${li}" value="${v}"></td>`;
+                    });
+                    html += `</tr>`;
+                });
+                html += `</tbody></table></div>`;
+
+            } else if (isComparative && q.expected_type === "forced_choice") {
+                // Forced choice: pick one of the set labels
+                html += `<div class="survey-question-block">
+                    <p><strong>Q${i+1}.</strong> ${q.question}</p>
+                    <div class="forced-choice-group">`;
+                labels.forEach((label, li) => {
+                    html += `<label><input type="radio" name="q${i}_forced" value="${label}"><span>${label}</span></label>`;
+                });
+                html += `</div></div>`;
+
+            } else if (q.expected_type === "text") {
+                html += `<div class="survey-question-block">
+                    <p><strong>Q${i+1}.</strong> ${q.question}</p>
+                    <textarea id="ans-text-${i}" rows="3" style="width:100%;padding:10px;background:#2c2c2c;border:1px solid #444;border-radius:6px;color:white;resize:vertical;box-sizing:border-box;"></textarea>
+                </div>`;
+
+            } else if (q.expected_type === "options") {
+                html += `<div class="survey-question-block">
+                    <p><strong>Q${i+1}.</strong> ${q.question}</p>
+                    <div class="forced-choice-group">`;
+                (q.allowed_options || []).forEach(opt => {
+                    html += `<label><input type="radio" name="q${i}_opt" value="${opt}"><span>${opt}</span></label>`;
+                });
+                html += `</div></div>`;
+
+            } else {
+                // Fallback: number or generic input
+                html += `<div class="survey-question-block">
+                    <p><strong>Q${i+1}.</strong> ${q.question}</p>
+                    <input type="text" id="ans-${i}" placeholder="Your answer...">
+                </div>`;
+            }
+        });
+
+        document.getElementById('survey-questions').innerHTML = html;
+    }
+
     function submitSurvey() {
+        const container = document.getElementById('survey-questions');
         let results = {};
-        document.querySelectorAll('#survey-questions input').forEach((input, i) => { results[`Question_${i+1}`] = input.value; });
+
+        // Collect all matrix_likert answers
+        container.querySelectorAll('.matrix-table').forEach((table, ti) => {
+            const qBlock = table.closest('.survey-question-block');
+            const qIdx = qBlock.querySelector('p strong').innerText.replace('Q','').replace('.','');
+            const ratings = {};
+            table.querySelectorAll('tbody tr').forEach(row => {
+                const label = row.querySelector('td').innerText;
+                const checked = row.querySelector('input[type="radio"]:checked');
+                ratings[label] = checked ? checked.value : null;
+            });
+            results[`Question_${qIdx}`] = { type: "matrix_likert", ratings: ratings };
+        });
+
+        // Collect forced_choice answers
+        container.querySelectorAll('.forced-choice-group').forEach(group => {
+            const qBlock = group.closest('.survey-question-block');
+            const qIdx = qBlock.querySelector('p strong').innerText.replace('Q','').replace('.','');
+            if (results[`Question_${qIdx}`]) return; // already handled by options
+            const checked = group.querySelector('input[type="radio"]:checked');
+            const name = group.querySelector('input[type="radio"]')?.name || "";
+            if (name.includes("_forced")) {
+                results[`Question_${qIdx}`] = { type: "forced_choice", choice: checked ? checked.value : null };
+            } else if (name.includes("_opt")) {
+                results[`Question_${qIdx}`] = { type: "options", answer: checked ? checked.value : null };
+            }
+        });
+
+        // Collect text answers
+        container.querySelectorAll('textarea').forEach(ta => {
+            const qBlock = ta.closest('.survey-question-block');
+            const qIdx = qBlock.querySelector('p strong').innerText.replace('Q','').replace('.','');
+            results[`Question_${qIdx}`] = { type: "text", answer: ta.value };
+        });
+
+        // Collect generic input answers
+        container.querySelectorAll('input[type="text"]').forEach(input => {
+            const qBlock = input.closest('.survey-question-block');
+            const qIdx = qBlock.querySelector('p strong').innerText.replace('Q','').replace('.','');
+            if (!results[`Question_${qIdx}`]) {
+                results[`Question_${qIdx}`] = { type: "input", answer: input.value };
+            }
+        });
+
         socket.emit('submit_survey', results);
         showPage('exp-page');
         document.getElementById('chat-box').innerHTML = "";

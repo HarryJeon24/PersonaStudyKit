@@ -76,7 +76,7 @@ GLOBAL_ELEVEN = keys.get("ELEVEN_API_KEY")
 GLOBAL_GEMINI = keys.get("GEMINI_API_KEY")
 
 DEF_SESSION = load_json("session_config.json", {
-    "MAX_TURNS": 5, "SURVEY_MODE": "written",
+    "MAX_TURNS": 5, "SURVEY_MODE": "written", "SURVEY_TYPE": "individual", "SET_SIZE": 1, "SET_LABELS": [],
     "SURVEY_QUESTIONS": [
         {"question": "How natural was the bot's flow (1-5)?", "expected_type": "number",
          "allowed_options": ["1", "2", "3", "4", "5"]},
@@ -311,7 +311,9 @@ def handle_connect():
     active_sessions[request.sid] = {
         "username": None, "persona_idx": 0, "history": [], "raw_logs": [],
         "turn": 0, "last_interruption": "", "bot_text": "", "remaining_text": "", "is_speaking": False,
-        "configs": None
+        "configs": None,
+        # Comparative survey tracking
+        "set_dialogues": [], "set_raw_logs": [], "set_personas": []
     }
 
 
@@ -347,10 +349,27 @@ def start_experiment(data):
     active_sessions[sid]["turn"] = 0
     active_sessions[sid]["last_interruption"] = ""
     active_sessions[sid]["remaining_text"] = ""
+    active_sessions[sid]["in_survey"] = False
+
+    # Reset set tracking at the start of a new set
+    set_size = session_configs["session"].get("SET_SIZE", 1)
+    set_position = len(active_sessions[sid]["set_personas"])
+    if set_position == 0 or set_position >= set_size:
+        active_sessions[sid]["set_dialogues"] = []
+        active_sessions[sid]["set_raw_logs"] = []
+        active_sessions[sid]["set_personas"] = []
 
     persona = personas_list[idx]
     emit('set_persona', {"name": persona.get('name')})
-    emit('status', {"msg": f"Starting Session: {persona.get('name')}", "color": "magenta"})
+
+    survey_type = session_configs["session"].get("SURVEY_TYPE", "individual")
+    set_labels = session_configs["session"].get("SET_LABELS", [])
+    if survey_type == "comparative" and set_size > 1:
+        current_set_pos = len(active_sessions[sid]["set_personas"])
+        label = set_labels[current_set_pos] if current_set_pos < len(set_labels) else f"Session {current_set_pos + 1}"
+        emit('status', {"msg": f"Starting {label}: {persona.get('name')} ({current_set_pos + 1}/{set_size})", "color": "magenta"})
+    else:
+        emit('status', {"msg": f"Starting Session: {persona.get('name')}", "color": "magenta"})
 
     prompt = f"{persona.get('persona', '')}\nGive a very short, 1-sentence opening greeting."
     msg = process_llm([{"role": "developer", "content": prompt}], persona, session_configs)
@@ -367,6 +386,8 @@ def handle_user_audio(audio_data):
     sid = request.sid
     session_state = active_sessions.get(sid)
     if not session_state or not session_state["username"]: return
+    if session_state.get("in_survey"):
+        return  # Ignore audio while survey is active
 
     cfg = session_state["configs"]
     persona = cfg["personas"][session_state["persona_idx"]]
@@ -452,8 +473,31 @@ def handle_user_audio(audio_data):
     session_state["history"].append({"role": "assistant", "content": bot_response})
 
     if should_exit or session_state["turn"] >= session_limit:
+        session_state["in_survey"] = True
         emit('chat', {"speaker": "Bot", "text": clean_response})
-        send_audio(sid, clean_response, persona, cfg, is_final=True)
+
+        survey_type = cfg["session"].get("SURVEY_TYPE", "individual")
+        set_size = cfg["session"].get("SET_SIZE", 1)
+
+        # Accumulate this persona's data into the set
+        session_state["set_dialogues"].append(session_state["history"][:])
+        session_state["set_raw_logs"].append(session_state["raw_logs"][:])
+        session_state["set_personas"].append(persona.get("name"))
+
+        if survey_type == "comparative" and set_size > 1:
+            if len(session_state["set_personas"]) >= set_size:
+                # Full set complete - show comparative survey
+                send_audio(sid, clean_response, persona, cfg, is_final=True, send_survey=True)
+            else:
+                # Set not complete - save progress and auto-advance to next persona
+                send_audio(sid, clean_response, persona, cfg, is_final=True, send_survey=False)
+                mark_persona_complete(sid, persona.get("name"))
+                emit('status', {"msg": "Session complete. Loading next condition...", "color": "#00FF00"})
+                socketio.sleep(1)
+                start_experiment({"username": session_state["username"]})
+        else:
+            # Individual mode - show survey after each persona
+            send_audio(sid, clean_response, persona, cfg, is_final=True, send_survey=True)
     else:
         emit('chat', {"speaker": "Bot", "text": clean_response})
         send_audio(sid, clean_response, persona, cfg, is_final=False)
@@ -488,15 +532,49 @@ def handle_survey(data):
     username = session_state["username"]
     cfg = session_state["configs"]
     researcher = cfg["researcher"]
-    persona_name = cfg["personas"][session_state["persona_idx"]].get("name")
+    survey_type = cfg["session"].get("SURVEY_TYPE", "individual")
+    set_size = cfg["session"].get("SET_SIZE", 1)
 
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
-    c.execute(
-        "INSERT INTO surveys (username, researcher, persona, timestamp, dialogue, raw_logs, answers) VALUES (?, ?, ?, ?, ?, ?, ?)",
-        (username, researcher, persona_name, datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-         json.dumps(session_state["history"]), json.dumps(session_state["raw_logs"]), json.dumps(data)))
-    c.execute("INSERT INTO progress (username, persona) VALUES (?, ?)", (username, persona_name))
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    if survey_type == "comparative" and set_size > 1:
+        # Comparative mode: store all set data together
+        set_personas = session_state.get("set_personas", [])
+        persona_name = " | ".join(set_personas)
+
+        # Build combined dialogue and logs with per-persona structure
+        combined_dialogue = {}
+        combined_logs = {}
+        set_labels = cfg["session"].get("SET_LABELS", [])
+        for i, p_name in enumerate(set_personas):
+            label = set_labels[i] if i < len(set_labels) else f"Session {i + 1}"
+            combined_dialogue[label] = session_state["set_dialogues"][i] if i < len(session_state["set_dialogues"]) else []
+            combined_logs[label] = session_state["set_raw_logs"][i] if i < len(session_state["set_raw_logs"]) else []
+
+        c.execute(
+            "INSERT INTO surveys (username, researcher, persona, timestamp, dialogue, raw_logs, answers) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (username, researcher, persona_name, timestamp,
+             json.dumps(combined_dialogue), json.dumps(combined_logs), json.dumps(data)))
+
+        # Mark the last persona complete (others already marked during set progression)
+        current_persona = cfg["personas"][session_state["persona_idx"]].get("name")
+        c.execute("INSERT OR IGNORE INTO progress (username, persona) VALUES (?, ?)", (username, current_persona))
+
+        # Reset set tracking
+        session_state["set_dialogues"] = []
+        session_state["set_raw_logs"] = []
+        session_state["set_personas"] = []
+    else:
+        # Individual mode: store single persona data
+        persona_name = cfg["personas"][session_state["persona_idx"]].get("name")
+        c.execute(
+            "INSERT INTO surveys (username, researcher, persona, timestamp, dialogue, raw_logs, answers) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (username, researcher, persona_name, timestamp,
+             json.dumps(session_state["history"]), json.dumps(session_state["raw_logs"]), json.dumps(data)))
+        c.execute("INSERT OR IGNORE INTO progress (username, persona) VALUES (?, ?)", (username, persona_name))
+
     conn.commit()
     conn.close()
 
@@ -538,7 +616,20 @@ def process_llm(messages, persona, cfg):
         return "I encountered a cognitive error."
 
 
-def send_audio(sid, text, persona, cfg, is_final=False):
+def mark_persona_complete(sid, persona_name):
+    """Mark a single persona as complete in the progress table without saving a survey."""
+    session_state = active_sessions.get(sid)
+    if not session_state:
+        return
+    username = session_state["username"]
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    c.execute("INSERT OR IGNORE INTO progress (username, persona) VALUES (?, ?)", (username, persona_name))
+    conn.commit()
+    conn.close()
+
+
+def send_audio(sid, text, persona, cfg, is_final=False, send_survey=None):
     model_cfg = cfg["model"]
     provider = persona.get("tts_provider", model_cfg.get("TTS_PROVIDER", "openai")).lower()
 
@@ -583,17 +674,30 @@ def send_audio(sid, text, persona, cfg, is_final=False):
     except Exception as e:
         print(f"TTS Error: {e}")
 
+    if send_survey is None:
+        send_survey = is_final
+
     if audio_data:
         active_sessions[sid]["bot_text"] = text
         active_sessions[sid]["is_speaking"] = True
+
+        session_state = active_sessions.get(sid)
+        session_cfg = cfg["session"]
+        survey_type = session_cfg.get("SURVEY_TYPE", "individual")
+        set_size = session_cfg.get("SET_SIZE", 1)
 
         payload = {
             "audio_b64": base64.b64encode(audio_data).decode('utf-8'),
             "duration_est": len(text) * 0.05,
             "is_final": is_final
         }
-        if is_final:
-            payload["survey"] = cfg["session"].get("SURVEY_QUESTIONS", [])
+        if send_survey:
+            payload["survey"] = session_cfg.get("SURVEY_QUESTIONS", [])
+            payload["survey_type"] = survey_type
+            payload["set_size"] = set_size
+            payload["set_labels"] = session_cfg.get("SET_LABELS", [])
+            if survey_type == "comparative" and set_size > 1 and session_state:
+                payload["set_personas"] = session_state.get("set_personas", [])
 
         emit('play_audio', payload)
         emit('status', {"msg": "Speaking...", "color": "cyan"})
