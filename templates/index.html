@@ -410,6 +410,17 @@
     </div>
 </div>
 
+<div id="transition-page" class="card hidden" style="max-width: 500px; text-align: center;">
+    <h2 style="color: #81d4fa;">Session Complete</h2>
+    <p id="transition-completed" style="color: #aaa; font-size: 1rem; margin-bottom: 10px;"></p>
+    <div style="background: #2c2c2c; border-radius: 8px; padding: 20px; margin: 20px 0;">
+        <p style="color: #888; font-size: 0.85rem; margin: 0 0 5px 0;">PROGRESS</p>
+        <p id="transition-progress" style="color: #fff; font-size: 1.2rem; font-weight: bold; margin: 0;"></p>
+    </div>
+    <p id="transition-next" style="color: #ccc; font-size: 0.95rem; margin-bottom: 25px;"></p>
+    <button class="btn-main" onclick="continueToNext()">Continue to Next Session</button>
+</div>
+
 <div id="survey-page" class="card hidden" style="max-width: 900px;">
     <h2 id="survey-title">Post-Session Survey</h2>
     <p id="survey-subtitle" style="color: #aaa; font-size: 0.9rem; margin-bottom: 20px;"></p>
@@ -539,6 +550,7 @@
     let audioChunks = [], botPlayStartTime = 0, currentBotDuration = 0;
     let isBotSpeaking = false, isUserRecording = false, pendingSurvey = null, lastSpeechTime = 0;
     let pendingSurveyMeta = null; // stores survey_type, set_labels, set_personas, set_size
+    let waitingForResponse = false; // gate to prevent sending audio while bot is thinking/responding
 
     async function setupAutoMic() {
         try {
@@ -589,7 +601,7 @@
                         mediaRecorder.start();
                     }
                     lastSpeechTime = Date.now();
-                } else if (isUserRecording && Date.now() - lastSpeechTime > 800) {
+                } else if (isUserRecording && Date.now() - lastSpeechTime > 1800) {
                     isUserRecording = false;
                     document.getElementById('mic-status').innerText = "Auto-listening enabled";
                     document.getElementById('mic-status').style.color = "#666";
@@ -598,7 +610,13 @@
             }, 100);
 
             mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
-            mediaRecorder.onstop = () => { socket.emit('user_audio_blob', new Blob(audioChunks, { type: 'audio/webm' })); audioChunks = []; };
+            mediaRecorder.onstop = () => {
+                if (!waitingForResponse) {
+                    waitingForResponse = true;
+                    socket.emit('user_audio_blob', new Blob(audioChunks, { type: 'audio/webm' }));
+                }
+                audioChunks = [];
+            };
 
         } catch (err) {
             console.error("Mic access error:", err);
@@ -606,6 +624,23 @@
             document.getElementById('mic-status').innerText = "Error: Microphone Denied";
             document.getElementById('mic-status').style.color = "red";
         }
+    }
+
+    socket.on('show_transition', data => {
+        stopMicAndAudio();
+        waitingForResponse = false;
+        document.getElementById('transition-completed').innerText =
+            `${data.completed_label} is complete.`;
+        document.getElementById('transition-progress').innerText =
+            `${data.current_pos} of ${data.set_size} sessions done`;
+        document.getElementById('transition-next').innerText =
+            `When you are ready, click below to begin ${data.next_label}.`;
+        showPage('transition-page');
+    });
+
+    function continueToNext() {
+        showPage('exp-page');
+        socket.emit('continue_to_next');
     }
 
     socket.on('set_persona', data => {
@@ -632,6 +667,18 @@
         document.getElementById('chat-box').innerHTML = "";
         socket.emit('start_experiment', { username: activeUser });
     }
+
+    let speakingTimeout = null;
+
+    socket.on('tts_failed', (data) => {
+        isBotSpeaking = false;
+        waitingForResponse = false;
+        if (data.is_final && pendingSurvey && pendingSurveyMeta) {
+            renderSurvey(pendingSurvey, pendingSurveyMeta);
+            pendingSurvey = null;
+            pendingSurveyMeta = null;
+        }
+    });
 
     socket.on('stop_audio_playback', () => {
         if (isBotSpeaking && currentSource) {
@@ -668,13 +715,30 @@
         botPlayStartTime = botAudioContext.currentTime;
 
         currentSource.onended = () => {
+            if (speakingTimeout) { clearTimeout(speakingTimeout); speakingTimeout = null; }
             isBotSpeaking = false;
+            waitingForResponse = false;
             if (pendingSurvey && pendingSurveyMeta) {
                 renderSurvey(pendingSurvey, pendingSurveyMeta);
                 pendingSurvey = null;
                 pendingSurveyMeta = null;
             }
         };
+
+        // Safety timeout: if onended never fires, recover after estimated duration + 10s
+        if (speakingTimeout) clearTimeout(speakingTimeout);
+        speakingTimeout = setTimeout(() => {
+            if (isBotSpeaking) {
+                console.warn("Speaking timeout - recovering from stuck state");
+                isBotSpeaking = false;
+                waitingForResponse = false;
+                currentSource = null;
+                document.getElementById('mic-status').innerText = "Auto-listening enabled";
+                document.getElementById('mic-status').style.color = "#666";
+                document.getElementById('status').innerText = "Status: Listening...";
+                document.getElementById('status').style.color = "#666";
+            }
+        }, (buffer.duration * 1000) + 10000);
     });
 
     function stopMicAndAudio() {
