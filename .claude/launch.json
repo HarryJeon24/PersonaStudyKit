@@ -1,0 +1,16 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "Flask Web Server (Browser Mode)",
+      "runtimeExecutable": "/Users/hjeon1999/PycharmProjects/PersonaStudyKit/.venv/bin/python",
+      "runtimeArgs": ["app.py"],
+      "port": 5050
+    },
+    {
+      "name": "CLI Bot (Terminal Mode)",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["bot_core.py"]
+    }
+  ]
+}
