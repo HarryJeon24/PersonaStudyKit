@@ -264,10 +264,35 @@ def upload_configs():
 
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
-    c.execute(
-        "INSERT OR REPLACE INTO configs (researcher, session_cfg, model_cfg, int_cfg, persona_cfg, secrets_cfg) VALUES (?, ?, ?, ?, ?, ?)",
-        (researcher, json.dumps(data.get('session')), json.dumps(data.get('model')), json.dumps(data.get('int')),
-         json.dumps(data.get('persona')), json.dumps(data.get('secrets'))))
+
+    # Check if row exists
+    c.execute("SELECT researcher FROM configs WHERE researcher=?", (researcher,))
+    exists = c.fetchone()
+
+    if exists:
+        # Only update fields that were actually provided (not null)
+        fields = {
+            "session_cfg": data.get('session'),
+            "model_cfg": data.get('model'),
+            "int_cfg": data.get('int'),
+            "persona_cfg": data.get('persona'),
+            "secrets_cfg": data.get('secrets')
+        }
+        updates = []
+        values = []
+        for col, val in fields.items():
+            if val is not None:
+                updates.append(f"{col}=?")
+                values.append(json.dumps(val))
+        if updates:
+            values.append(researcher)
+            c.execute(f"UPDATE configs SET {', '.join(updates)} WHERE researcher=?", values)
+    else:
+        c.execute(
+            "INSERT INTO configs (researcher, session_cfg, model_cfg, int_cfg, persona_cfg, secrets_cfg) VALUES (?, ?, ?, ?, ?, ?)",
+            (researcher, json.dumps(data.get('session')), json.dumps(data.get('model')), json.dumps(data.get('int')),
+             json.dumps(data.get('persona')), json.dumps(data.get('secrets'))))
+
     conn.commit()
     conn.close()
     return jsonify({"success": True})
@@ -450,6 +475,9 @@ def handle_user_audio(audio_data):
 
     messages.extend(session_state["history"])
 
+    llm_prov = persona.get("llm_provider", cfg["model"].get("LLM_PROVIDER", "openai"))
+    tts_prov = persona.get("tts_provider", cfg["model"].get("TTS_PROVIDER", "openai"))
+    print(f"[{sid[:8]}] LLM={llm_prov} | TTS={tts_prov} | Persona={persona.get('name')}")
     emit('status', {"msg": "Thinking...", "color": "yellow"})
     bot_response = process_llm(messages, persona, cfg)
 
@@ -489,12 +517,19 @@ def handle_user_audio(audio_data):
                 # Full set complete - show comparative survey
                 send_audio(sid, clean_response, persona, cfg, is_final=True, send_survey=True)
             else:
-                # Set not complete - save progress and auto-advance to next persona
+                # Set not complete - show transition screen, wait for user to proceed
                 send_audio(sid, clean_response, persona, cfg, is_final=True, send_survey=False)
                 mark_persona_complete(sid, persona.get("name"))
-                emit('status', {"msg": "Session complete. Loading next condition...", "color": "#00FF00"})
-                socketio.sleep(1)
-                start_experiment({"username": session_state["username"]})
+                set_labels = cfg["session"].get("SET_LABELS", [])
+                current_pos = len(session_state["set_personas"])
+                current_label = set_labels[current_pos - 1] if current_pos - 1 < len(set_labels) else f"Session {current_pos}"
+                next_label = set_labels[current_pos] if current_pos < len(set_labels) else f"Session {current_pos + 1}"
+                emit('show_transition', {
+                    "completed_label": current_label,
+                    "next_label": next_label,
+                    "current_pos": current_pos,
+                    "set_size": set_size
+                })
         else:
             # Individual mode - show survey after each persona
             send_audio(sid, clean_response, persona, cfg, is_final=True, send_survey=True)
@@ -523,6 +558,14 @@ def handle_interrupt(data):
 
         emit('status', {"msg": f"Interrupted at: {cutoff}...", "color": "red"})
         emit('stop_audio_playback')
+
+
+@socketio.on('continue_to_next')
+def handle_continue_to_next():
+    sid = request.sid
+    session_state = active_sessions.get(sid)
+    if session_state and session_state.get("username"):
+        start_experiment({"username": session_state["username"]})
 
 
 @socketio.on('submit_survey')
@@ -677,30 +720,35 @@ def send_audio(sid, text, persona, cfg, is_final=False, send_survey=None):
     if send_survey is None:
         send_survey = is_final
 
-    if audio_data:
-        active_sessions[sid]["bot_text"] = text
-        active_sessions[sid]["is_speaking"] = True
+    if not audio_data:
+        print(f"TTS Warning: No audio generated for text: {text[:80]}...")
+        emit('status', {"msg": "TTS failed - no audio generated. Listening...", "color": "red"})
+        emit('tts_failed', {"is_final": is_final})
+        return
 
-        session_state = active_sessions.get(sid)
-        session_cfg = cfg["session"]
-        survey_type = session_cfg.get("SURVEY_TYPE", "individual")
-        set_size = session_cfg.get("SET_SIZE", 1)
+    active_sessions[sid]["bot_text"] = text
+    active_sessions[sid]["is_speaking"] = True
 
-        payload = {
-            "audio_b64": base64.b64encode(audio_data).decode('utf-8'),
-            "duration_est": len(text) * 0.05,
-            "is_final": is_final
-        }
-        if send_survey:
-            payload["survey"] = session_cfg.get("SURVEY_QUESTIONS", [])
-            payload["survey_type"] = survey_type
-            payload["set_size"] = set_size
-            payload["set_labels"] = session_cfg.get("SET_LABELS", [])
-            if survey_type == "comparative" and set_size > 1 and session_state:
-                payload["set_personas"] = session_state.get("set_personas", [])
+    session_state = active_sessions.get(sid)
+    session_cfg = cfg["session"]
+    survey_type = session_cfg.get("SURVEY_TYPE", "individual")
+    set_size = session_cfg.get("SET_SIZE", 1)
 
-        emit('play_audio', payload)
-        emit('status', {"msg": "Speaking...", "color": "cyan"})
+    payload = {
+        "audio_b64": base64.b64encode(audio_data).decode('utf-8'),
+        "duration_est": len(text) * 0.05,
+        "is_final": is_final
+    }
+    if send_survey:
+        payload["survey"] = session_cfg.get("SURVEY_QUESTIONS", [])
+        payload["survey_type"] = survey_type
+        payload["set_size"] = set_size
+        payload["set_labels"] = session_cfg.get("SET_LABELS", [])
+        if survey_type == "comparative" and set_size > 1 and session_state:
+            payload["set_personas"] = session_state.get("set_personas", [])
+
+    emit('play_audio', payload)
+    emit('status', {"msg": "Speaking...", "color": "cyan"})
 
 
 if __name__ == '__main__':
