@@ -41,6 +41,7 @@
         .config-table th { color: #fff; background: #333; padding: 8px;}
         .config-table td { border-bottom: 1px solid #444; padding: 8px;}
         .alert-box { background: rgba(255, 82, 82, 0.1); border: 1px solid #ff5252; color: #ff5252; padding: 10px; border-radius: 6px; margin-bottom: 15px; font-size: 0.9rem;}
+        .warning-box { background: rgba(255, 167, 38, 0.1); border: 1px solid #ffa726; color: #ffa726; padding: 10px; border-radius: 6px; margin-bottom: 15px; font-size: 0.9rem; }
 
         /* Experiment Styles */
         .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid #333; padding-bottom: 10px; }
@@ -110,89 +111,23 @@
         <details>
             <summary>1. persona.json (Characters & Overrides)</summary>
             <div class="doc-content">
+                <div class="warning-box">
+                    <strong>CRITICAL:</strong> Every persona in your array MUST have a strictly unique <code>"name"</code> value. The platform uses this exact string to track user progress in the database. If you are testing multiple strategy conditions for the same character, you must append the condition to the name (e.g., <code>"The Helpful Librarian (Version X)"</code>) so the system treats them as distinct sessions.
+                </div>
                 Defines the AI characters. You can override global model routing and interruption behavior on a per-persona basis.
-                <pre>
-{
-  "personas": [
-    {
-      "name": "Angry Chef",
-      "persona": "You are a highly aggressive chef running a busy kitchen.",
-      "llm_provider": "openai",
-      "tts_provider": "elevenlabs",
-      "voice_id": "JBFqnCBsd6RMkjVDRZzb",
-      "interruption_config": {
-        "MODE": "probabilistic",
-        "STRATEGY_MATRIX": {
-          "COMPETITIVE": {"RESUME": 100, "BRIDGE": 0, "YIELD": 0, "EXIT": 0}
-        }
-      }
-    }
-  ]
-}</pre>
             </div>
         </details>
-
         <details>
             <summary>2. session_config.json (Flow & Surveys)</summary>
-            <div class="doc-content">
-                Controls how long the experiment lasts and what questions are asked during the post-session survey.
-                <pre>
-{
-  "MAX_TURNS": 5,
-  "SURVEY_QUESTIONS": [
-    {
-      "question": "Did the bot sound angry?",
-      "expected_type": "options",
-      "allowed_options": ["yes", "no"]
-    }
-  ]
-}</pre>
-            </div>
+            <div class="doc-content">Controls how long the experiment lasts and what questions are asked.</div>
         </details>
-
         <details>
             <summary>3. model_config.json (Global Providers)</summary>
-            <div class="doc-content">
-                Sets the fallback models and voices if a persona does not specify them explicitly.
-                <pre>
-{
-  "LLM_PROVIDER": "gemini",
-  "GEMINI_MODEL": "gemini-2.5-flash",
-  "TTS_PROVIDER": "openai",
-  "OPENAI_TTS_MODEL": "gpt-4o-mini-tts",
-  "OPENAI_DEFAULT_VOICE": "coral"
-}</pre>
-            </div>
+            <div class="doc-content">Sets the fallback models and voices if a persona does not specify them explicitly.</div>
         </details>
-
         <details>
             <summary>4. interruption_config.json (Logic Matrix)</summary>
-            <div class="doc-content">
-                The global probability matrix defining how the bot reacts to being interrupted.
-                <pre>
-{
-  "MODE": "probabilistic",
-  "INTENTS": {
-    "COMPETITIVE": "User disagrees, corrects, or tells you to be quiet."
-  },
-  "STRATEGY_MATRIX": {
-    "COMPETITIVE": {"RESUME": 80, "BRIDGE": 20, "YIELD": 0, "EXIT": 0}
-  }
-}</pre>
-            </div>
-        </details>
-
-        <details>
-            <summary>5. secrets.json (API Keys)</summary>
-            <div class="doc-content">
-                Contains the API keys required to generate responses and voice. Because this is a public platform, <b>do not share this file with anyone</b>. Uploading it stores it securely in the database linked only to your researcher account.
-                <pre>
-{
-  "OPENAI_API_KEY": "sk-proj-...",
-  "ELEVEN_API_KEY": "sk_...",
-  "GEMINI_API_KEY": "AIza..."
-}</pre>
-            </div>
+            <div class="doc-content">The global probability matrix defining how the bot reacts to being interrupted.</div>
         </details>
     </div>
 
@@ -222,7 +157,10 @@
 
 <div id="exp-page" class="card hidden">
     <div class="header">
-        <div id="current-persona" style="font-weight: bold;">Loading Persona...</div>
+        <div>
+            <div id="current-persona" style="font-weight: bold; font-size: 1.1rem;">Loading Persona...</div>
+            <div id="scenario-display" style="font-size: 0.85rem; color: #81d4fa; margin-top: 5px; font-style: italic;"></div>
+        </div>
         <div>
             <span class="user-tag">User: <span id="display-username"></span></span>
             <button class="btn-logout" onclick="location.reload()">Log Out</button>
@@ -249,13 +187,11 @@
     let authMode = 'login';
     let activeUser = "";
 
-    // --- UI NAVIGATION ---
     function showPage(pageId) {
         document.querySelectorAll('.card').forEach(c => c.classList.add('hidden'));
         document.getElementById(pageId).classList.remove('hidden');
     }
 
-    // --- AUTH & ROLES ---
     async function loadResearchers() {
         const res = await fetch('/api/researchers');
         const data = await res.json();
@@ -305,7 +241,6 @@
                 } else {
                     document.getElementById('display-username').innerText = username;
                     showPage('exp-page');
-                    // We must wait for the page to show before setting up the mic
                     setTimeout(setupAutoMic, 100);
                 }
             } else {
@@ -318,7 +253,6 @@
         }
     }
 
-    // --- RESEARCHER DASHBOARD ---
     async function readJSONFile(inputId) {
         const file = document.getElementById(inputId).files[0];
         if (!file) return null;
@@ -361,22 +295,22 @@
         window.location.href = `/api/export?researcher=${activeUser}`;
     }
 
-    // --- TESTER AUDIO/EXPERIMENT LOGIC ---
+    // --- CONCURRENCY LOCKED AUDIO LOGIC ---
     let mediaRecorder, botAudioContext, currentSource = null;
     let audioChunks = [], botPlayStartTime = 0, currentBotDuration = 0;
-    let isBotSpeaking = false, isUserRecording = false, pendingSurvey = null, lastSpeechTime = 0;
+
+    // Strict State Machine to prevent overlap
+    let isBotSpeaking = false;
+    let isUserRecording = false;
+    let isWaitingForBot = false; // Prevents recording while server is thinking
 
     async function setupAutoMic() {
         try {
-            // Wait for user permission
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
 
-            // Fix for Chrome/Safari Autoplay suspensions
             const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            if (audioCtx.state === 'suspended') {
-                await audioCtx.resume();
-            }
+            if (audioCtx.state === 'suspended') await audioCtx.resume();
 
             const analyzer = audioCtx.createAnalyser();
             const source = audioCtx.createMediaStreamSource(stream);
@@ -387,46 +321,81 @@
             document.getElementById('mic-status').innerText = "Auto-listening enabled";
             document.getElementById('mic-status').style.color = "#666";
 
+            let lastSpeechTime = Date.now();
+
             setInterval(() => {
                 analyzer.getByteFrequencyData(dataArray);
                 let avg = dataArray.reduce((a,b) => a+b) / dataArray.length;
                 document.getElementById('vol-bar').style.width = Math.min(avg * 3, 100) + "%";
 
-                if (avg > 12) {
+                if (avg > 30) {
+                    lastSpeechTime = Date.now();
+
                     if (isBotSpeaking) {
                         let percent = (botAudioContext.currentTime - botPlayStartTime) / currentBotDuration;
-                        socket.emit('interrupt_signal', { percent });
-                        if (currentSource) { currentSource.onended = null; currentSource.stop(); isBotSpeaking = false; }
+                        if (percent > 1) percent = 0.99;
+                        socket.emit('interrupt_signal', { percent: percent });
+                        if (currentSource) { currentSource.onended = null; currentSource.stop(); }
+
+                        // Break the locks since the user just interrupted
+                        isBotSpeaking = false;
+                        isWaitingForBot = false;
                     }
-                    if (!isUserRecording) {
+
+                    // Only start recording if we aren't waiting for the AI to finish thinking
+                    if (!isUserRecording && !isWaitingForBot) {
                         isUserRecording = true;
                         document.getElementById('mic-status').innerText = "🔴 Recording Speech...";
                         document.getElementById('mic-status').style.color = "#ff5252";
                         audioChunks = [];
                         mediaRecorder.start();
                     }
-                    lastSpeechTime = Date.now();
-                } else if (isUserRecording && Date.now() - lastSpeechTime > 800) {
+
+                } else if (isUserRecording && (Date.now() - lastSpeechTime > 400)) {
                     isUserRecording = false;
-                    document.getElementById('mic-status').innerText = "Auto-listening enabled";
-                    document.getElementById('mic-status').style.color = "#666";
-                    mediaRecorder.stop();
+                    isWaitingForBot = true; // Lock frontend while processing
+
+                    document.getElementById('mic-status').innerText = "Processing Audio...";
+                    document.getElementById('mic-status').style.color = "yellow";
+                    mediaRecorder.stop(); // will trigger onstop
                 }
             }, 100);
 
             mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
-            mediaRecorder.onstop = () => { socket.emit('user_audio_blob', new Blob(audioChunks, { type: 'audio/webm' })); audioChunks = []; };
+            mediaRecorder.onstop = () => {
+                socket.emit('user_audio_blob', new Blob(audioChunks, { type: 'audio/webm' }));
+                audioChunks = [];
+            };
 
         } catch (err) {
             console.error("Mic access error:", err);
-            alert("Microphone access was denied! Please click the lock icon next to your URL bar, allow Microphone access, and refresh the page.");
+            alert("Microphone access was denied! Please allow Microphone access and refresh the page.");
             document.getElementById('mic-status').innerText = "Error: Microphone Denied";
             document.getElementById('mic-status').style.color = "red";
         }
     }
 
-    socket.on('set_persona', data => { document.getElementById('current-persona').innerText = "Persona: " + data.name; });
-    socket.on('status', data => { document.getElementById('status').innerText = "Status: " + data.msg; document.getElementById('status').style.color = data.color; });
+    socket.on('set_persona', data => {
+        document.getElementById('current-persona').innerText = "Persona: " + data.name;
+        if(data.scenario) {
+            document.getElementById('scenario-display').innerText = "Goal: " + data.scenario;
+        } else {
+            document.getElementById('scenario-display').innerText = "";
+        }
+    });
+
+    socket.on('status', data => {
+        document.getElementById('status').innerText = "Status: " + data.msg;
+        document.getElementById('status').style.color = data.color;
+
+        // Failsafe: if backend resets to Listening, unlock frontend
+        if (data.msg === "Listening...") {
+            isWaitingForBot = false;
+            document.getElementById('mic-status').innerText = "Auto-listening enabled";
+            document.getElementById('mic-status').style.color = "#666";
+        }
+    });
+
     socket.on('chat', data => {
         const box = document.getElementById('chat-box');
         box.innerHTML += `<div class="msg msg-${data.speaker}"><strong>${data.speaker}:</strong> ${data.text}</div>`;
@@ -434,44 +403,46 @@
     });
 
     function startSession() {
-        // Initialize bot AudioContext on direct user click to bypass autoplay restrictions
-        if (!botAudioContext) {
-            botAudioContext = new (window.AudioContext || window.webkitAudioContext)();
-        }
-        if (botAudioContext.state === 'suspended') {
-            botAudioContext.resume();
-        }
+        if (!botAudioContext) botAudioContext = new (window.AudioContext || window.webkitAudioContext)();
+        if (botAudioContext.state === 'suspended') botAudioContext.resume();
 
         document.getElementById('start-session-btn').classList.add('hidden');
         document.getElementById('chat-box').innerHTML = "";
         socket.emit('start_experiment', { username: activeUser });
     }
 
-    socket.on('play_audio', async (data) => {
+    socket.on('play_audio_buffer', async (data) => {
+        isWaitingForBot = false; // We got the response, unlock recording logic
         isBotSpeaking = true;
         currentBotDuration = data.duration_est;
-        pendingSurvey = data.is_final ? data.survey : null;
+        let pendingSurvey = data.is_final ? data.survey : null;
 
-        const audioData = atob(data.audio_b64);
-        const arrayBuffer = new Uint8Array(audioData.length).map((_, i) => audioData.charCodeAt(i)).buffer;
-        const buffer = await botAudioContext.decodeAudioData(arrayBuffer);
+        try {
+            const audioData = atob(data.audio_b64);
+            const arrayBuffer = new Uint8Array(audioData.length).map((_, i) => audioData.charCodeAt(i)).buffer;
+            const buffer = await botAudioContext.decodeAudioData(arrayBuffer);
 
-        currentSource = botAudioContext.createBufferSource();
-        currentSource.buffer = buffer;
-        currentSource.connect(botAudioContext.destination);
-        currentSource.start(0);
-        botPlayStartTime = botAudioContext.currentTime;
+            currentSource = botAudioContext.createBufferSource();
+            currentSource.buffer = buffer;
+            currentSource.connect(botAudioContext.destination);
+            currentSource.start(0);
+            botPlayStartTime = botAudioContext.currentTime;
 
-        currentSource.onended = () => {
+            currentSource.onended = () => {
+                isBotSpeaking = false;
+                if (pendingSurvey && pendingSurvey.length > 0) {
+                    showPage('survey-page');
+                    let html = "";
+                    pendingSurvey.forEach((q, i) => { html += `<div style="margin-bottom:15px;"><p>${q.question}</p><input type="text" id="ans-${i}"></div>`; });
+                    document.getElementById('survey-questions').innerHTML = html;
+                    pendingSurvey = null;
+                }
+            };
+        } catch (e) {
+            console.error("Audio Decoding Error: ", e);
             isBotSpeaking = false;
-            if (pendingSurvey) {
-                showPage('survey-page');
-                let html = "";
-                pendingSurvey.forEach((q, i) => { html += `<div style="margin-bottom:15px;"><p>${q.question}</p><input type="text" id="ans-${i}"></div>`; });
-                document.getElementById('survey-questions').innerHTML = html;
-                pendingSurvey = null;
-            }
-        };
+            isWaitingForBot = false;
+        }
     });
 
     function submitSurvey() {
