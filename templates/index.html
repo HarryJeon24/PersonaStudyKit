@@ -126,45 +126,100 @@
         </div>
 
         <details>
-            <summary>1. persona.json (Characters & Overrides)</summary>
+            <summary>1. persona.json (Characters, Scenarios & Per-Persona Overrides)</summary>
             <div class="doc-content">
-                Defines the AI characters. You can override global model routing and interruption behavior on a per-persona basis.
+                Defines the AI characters your testers will interact with. Each persona entry contains a name, a system prompt describing the character and scenario, and optional overrides for model routing and interruption behavior.
+                <br><br>
+                <strong>Key concept:</strong> In <em>comparative mode</em>, every consecutive group of <code>SET_SIZE</code> personas forms one evaluation block. For example, if <code>SET_SIZE = 3</code>, personas 1-3 are compared in one survey, 4-6 in the next, etc. This means you typically list the <em>same character</em> multiple times with different interruption configs (one per turn-taking policy).
+                <br><br>
+                <table class="config-table">
+                    <tr><th>Field</th><th>Required</th><th>Description</th></tr>
+                    <tr><td><code>name</code></td><td>Yes</td><td>Display name shown to testers. Use a suffix like <code>"- Style A"</code> to differentiate conditions in comparative mode.</td></tr>
+                    <tr><td><code>persona</code></td><td>Yes</td><td>The full system prompt: character description + scenario goal. Should encourage the tester to interrupt.</td></tr>
+                    <tr><td><code>quadrant</code></td><td>No</td><td>Metadata label for the Interpersonal Circumplex quadrant (e.g., <code>"Q1_HighAgency_LowCommunion"</code>). Not used by the system, but useful for your analysis.</td></tr>
+                    <tr><td><code>llm_provider</code></td><td>No</td><td>Override the global LLM provider for this persona. Values: <code>"openai"</code>, <code>"gemini"</code>.</td></tr>
+                    <tr><td><code>tts_provider</code></td><td>No</td><td>Override the global TTS provider. Values: <code>"openai"</code>, <code>"elevenlabs"</code>, <code>"gemini"</code>.</td></tr>
+                    <tr><td><code>voice_id</code></td><td>No</td><td>Voice ID or name for the chosen TTS provider (e.g., <code>"coral"</code> for OpenAI, <code>"Aoede"</code> for Gemini, or an ElevenLabs voice ID).</td></tr>
+                    <tr><td><code>interruption_config</code></td><td>No</td><td>Per-persona override for interruption behavior. See <em>interruption_config.json</em> docs below for the full schema.</td></tr>
+                </table>
+                <br>
+                <strong>Example: Comparative study with 3 turn-taking policies per persona</strong>
                 <pre>
 {
   "personas": [
     {
-      "name": "Angry Chef",
-      "persona": "You are a highly aggressive chef running a busy kitchen.",
-      "llm_provider": "openai",
-      "tts_provider": "elevenlabs",
-      "voice_id": "JBFqnCBsd6RMkjVDRZzb",
+      "name": "Grumpy Tavern Keeper - Always Yield",
+      "persona": "You are a grumpy tavern keeper... Scenario: ...",
+      "quadrant": "Q1_HighAgency_LowCommunion",
+      "interruption_config": {
+        "MODE": "deterministic",
+        "STRATEGY_MATRIX": {
+          "COMPETITIVE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "EXIT": 0},
+          "COOPERATIVE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "EXIT": 0},
+          "TOPIC_CHANGE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "EXIT": 0},
+          "BACKCHANNEL": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "EXIT": 0},
+          "TERMINATE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 0, "EXIT": 100}
+        }
+      }
+    },
+    {
+      "name": "Grumpy Tavern Keeper - Probabilistic",
+      "persona": "You are a grumpy tavern keeper... Scenario: ...",
       "interruption_config": {
         "MODE": "probabilistic",
         "STRATEGY_MATRIX": {
-          "COMPETITIVE": {"RESUME": 100, "BRIDGE": 0, "YIELD": 0, "EXIT": 0}
+          "COMPETITIVE": {"RESUME": 70, "BRIDGE": 20, "YIELD": 10, "EXIT": 0}
         }
       }
+    },
+    {
+      "name": "Grumpy Tavern Keeper - Autonomous",
+      "persona": "You are a grumpy tavern keeper... Scenario: ...",
+      "interruption_config": { "MODE": "autonomous" }
     }
   ]
 }</pre>
+                <strong>Tip:</strong> In individual mode, each persona gets its own survey. Just list one entry per character with no suffix needed.
             </div>
         </details>
 
         <details>
-            <summary>2. session_config.json (Flow & Surveys)</summary>
+            <summary>2. session_config.json (Experiment Flow & Survey Design)</summary>
             <div class="doc-content">
-                Controls how long the experiment lasts and what questions are asked during the post-session survey. Supports two modes:
+                Controls how long each interaction lasts and the post-session survey instrument.
                 <br><br>
-                <strong>Individual Mode</strong> (default): One survey after each persona session.
+                <table class="config-table">
+                    <tr><th>Field</th><th>Default</th><th>Description</th></tr>
+                    <tr><td><code>MAX_TURNS</code></td><td><code>5</code></td><td>Number of user turns before the session auto-ends. The bot's greeting does not count.</td></tr>
+                    <tr><td><code>SURVEY_MODE</code></td><td><code>"written"</code></td><td>Reserved for future use (e.g., voice surveys).</td></tr>
+                    <tr><td><code>SURVEY_TYPE</code></td><td><code>"individual"</code></td><td><code>"individual"</code> = one survey per persona. <code>"comparative"</code> = one survey after a set of <code>SET_SIZE</code> personas, comparing them side-by-side.</td></tr>
+                    <tr><td><code>SET_SIZE</code></td><td><code>1</code></td><td>How many consecutive personas form one evaluation block. Only used when <code>SURVEY_TYPE = "comparative"</code>.</td></tr>
+                    <tr><td><code>SET_LABELS</code></td><td><code>[]</code></td><td>Display labels for each condition in the comparative survey (e.g., <code>["Style A", "Style B", "Style C"]</code>). Must match <code>SET_SIZE</code> in length.</td></tr>
+                    <tr><td><code>SURVEY_QUESTIONS</code></td><td><code>[]</code></td><td>Array of question objects. See question types below.</td></tr>
+                </table>
+                <br>
+                <strong>Question Types</strong>
+                <table class="config-table">
+                    <tr><th>Type</th><th>Mode</th><th>Description</th><th>Extra Fields</th></tr>
+                    <tr><td><code>matrix_likert</code></td><td>Comparative</td><td>Rate each condition (SET_LABEL) side-by-side on a scale. Renders as a matrix table.</td><td><code>allowed_options</code>: scale values (e.g., <code>["1","2","3","4","5"]</code>). <code>reverse_coded</code>: <code>true</code> to flag reverse-scored items. <code>source</code>: optional citation note.</td></tr>
+                    <tr><td><code>forced_choice</code></td><td>Comparative</td><td>Pick exactly one of the SET_LABELS as the best. Renders as radio buttons with the label names.</td><td><code>allowed_options</code>: leave empty <code>[]</code>, labels are auto-populated.</td></tr>
+                    <tr><td><code>options</code></td><td>Both</td><td>Select from a predefined list of choices.</td><td><code>allowed_options</code>: array of string choices.</td></tr>
+                    <tr><td><code>number</code></td><td>Both</td><td>Numeric input, validated against allowed values.</td><td><code>allowed_options</code>: valid number strings.</td></tr>
+                    <tr><td><code>text</code></td><td>Both</td><td>Free-form text response. Renders as a textarea.</td><td>None required.</td></tr>
+                </table>
+                <br>
+                <strong>Example: Individual mode</strong>
                 <pre>
 {
   "MAX_TURNS": 5,
   "SURVEY_TYPE": "individual",
+  "SET_SIZE": 1,
   "SURVEY_QUESTIONS": [
-    { "question": "Did the bot sound angry?", "expected_type": "options", "allowed_options": ["yes", "no"] }
+    { "question": "How natural was the bot? (1-5)", "expected_type": "number", "allowed_options": ["1","2","3","4","5"] },
+    { "question": "Did it stay in character?", "expected_type": "options", "allowed_options": ["yes", "no"] }
   ]
 }</pre>
-                <strong>Comparative Mode</strong>: Groups personas into sets of <code>SET_SIZE</code>. One comparative survey appears after the full set is completed. Use <code>SET_LABELS</code> to name each condition.
+                <strong>Example: Comparative mode (paper replication)</strong>
                 <pre>
 {
   "MAX_TURNS": 5,
@@ -173,9 +228,10 @@
   "SET_LABELS": ["Style A", "Style B", "Style C"],
   "SURVEY_QUESTIONS": [
     {
-      "question": "The reaction felt natural.",
+      "question": "The reaction felt human-like and natural.",
       "expected_type": "matrix_likert",
-      "allowed_options": ["1","2","3","4","5"]
+      "allowed_options": ["1","2","3","4","5"],
+      "source": "Reaction Naturalness"
     },
     {
       "question": "Which style was best for this character?",
@@ -189,45 +245,102 @@
     }
   ]
 }</pre>
-                <table class="config-table">
-                    <tr><th>Question Type</th><th>Mode</th><th>Description</th></tr>
-                    <tr><td><code>matrix_likert</code></td><td>Comparative</td><td>Rate each style side-by-side on a Likert scale. Add <code>"reverse_coded": true</code> for reverse-scored items.</td></tr>
-                    <tr><td><code>forced_choice</code></td><td>Comparative</td><td>Pick one of the SET_LABELS as the best.</td></tr>
-                    <tr><td><code>number</code></td><td>Both</td><td>Numeric input, validated against allowed_options.</td></tr>
-                    <tr><td><code>options</code></td><td>Both</td><td>Select from a predefined list.</td></tr>
-                    <tr><td><code>text</code></td><td>Both</td><td>Free-form text response.</td></tr>
-                </table>
             </div>
         </details>
 
         <details>
-            <summary>3. model_config.json (Global Providers)</summary>
+            <summary>3. model_config.json (Global LLM & TTS Providers)</summary>
             <div class="doc-content">
-                Sets the fallback models and voices if a persona does not specify them explicitly.
+                Sets the default models and voices used when a persona does not specify its own. Each persona can override any of these values via its <code>llm_provider</code>, <code>tts_provider</code>, and <code>voice_id</code> fields.
+                <br><br>
+                <table class="config-table">
+                    <tr><th>Field</th><th>Default</th><th>Description</th></tr>
+                    <tr><td><code>LLM_PROVIDER</code></td><td><code>"gemini"</code></td><td>Default LLM provider for dialogue generation. Values: <code>"openai"</code>, <code>"gemini"</code>.</td></tr>
+                    <tr><td><code>OPENAI_MODEL</code></td><td><code>"gpt-4o-mini"</code></td><td>OpenAI model ID used when <code>LLM_PROVIDER = "openai"</code>.</td></tr>
+                    <tr><td><code>GEMINI_MODEL</code></td><td><code>"gemini-2.5-flash"</code></td><td>Gemini model ID used when <code>LLM_PROVIDER = "gemini"</code>.</td></tr>
+                    <tr><td><code>TTS_PROVIDER</code></td><td><code>"openai"</code></td><td>Default TTS provider for voice synthesis. Values: <code>"openai"</code>, <code>"elevenlabs"</code>, <code>"gemini"</code>.</td></tr>
+                    <tr><td><code>OPENAI_TTS_MODEL</code></td><td><code>"gpt-4o-mini-tts"</code></td><td>OpenAI TTS model ID.</td></tr>
+                    <tr><td><code>OPENAI_DEFAULT_VOICE</code></td><td><code>"coral"</code></td><td>Default OpenAI voice name.</td></tr>
+                    <tr><td><code>GEMINI_TTS_MODEL</code></td><td><code>"gemini-2.5-flash-preview-tts"</code></td><td>Gemini TTS model ID.</td></tr>
+                    <tr><td><code>GEMINI_DEFAULT_VOICE</code></td><td><code>"Aoede"</code></td><td>Default Gemini voice name.</td></tr>
+                    <tr><td><code>ELEVENLABS_DEFAULT_VOICE_ID</code></td><td><code>"JBFqnCBsd6RMkjVDRZzb"</code></td><td>Default ElevenLabs voice ID.</td></tr>
+                    <tr><td><code>ELEVENLABS_MODEL_ID</code></td><td><code>"eleven_flash_v2_5"</code></td><td>ElevenLabs model ID.</td></tr>
+                </table>
+                <br>
                 <pre>
 {
   "LLM_PROVIDER": "gemini",
+  "OPENAI_MODEL": "gpt-4o-mini",
   "GEMINI_MODEL": "gemini-2.5-flash",
   "TTS_PROVIDER": "openai",
   "OPENAI_TTS_MODEL": "gpt-4o-mini-tts",
-  "OPENAI_DEFAULT_VOICE": "coral"
+  "OPENAI_DEFAULT_VOICE": "coral",
+  "GEMINI_TTS_MODEL": "gemini-2.5-flash-preview-tts",
+  "GEMINI_DEFAULT_VOICE": "Aoede",
+  "ELEVENLABS_DEFAULT_VOICE_ID": "JBFqnCBsd6RMkjVDRZzb",
+  "ELEVENLABS_MODEL_ID": "eleven_flash_v2_5"
 }</pre>
             </div>
         </details>
 
         <details>
-            <summary>4. interruption_config.json (Logic Matrix)</summary>
+            <summary>4. interruption_config.json (Intent Classification & Strategy Matrix)</summary>
             <div class="doc-content">
-                The global probability matrix defining how the bot reacts to being interrupted.
+                Defines how the bot classifies user interruptions and selects its behavioral response. This is the global default; each persona can override it via its <code>interruption_config</code> field.
+                <br><br>
+                <table class="config-table">
+                    <tr><th>Field</th><th>Description</th></tr>
+                    <tr><td><code>MODE</code></td><td>
+                        Turn-taking policy mode. Determines how the strategy is selected:<br>
+                        <code>"autonomous"</code> - The LLM dynamically selects its own strategy based on persona and context. The STRATEGY_MATRIX is ignored.<br>
+                        <code>"probabilistic"</code> - The system randomly samples a strategy from the STRATEGY_MATRIX based on the classified intent's probability weights.<br>
+                        <code>"deterministic"</code> - Same as probabilistic, but typically configured with 100% weights to force a single strategy (e.g., always yield).
+                    </td></tr>
+                    <tr><td><code>INTENTS</code></td><td>
+                        A dictionary mapping intent labels to natural-language descriptions used by the LLM classifier:<br>
+                        <code>"COMPETITIVE"</code> - User contradicts, corrects, or overrides the agent.<br>
+                        <code>"COOPERATIVE"</code> - User adds relevant info or agrees without derailing.<br>
+                        <code>"TOPIC_CHANGE"</code> - User forcefully pivots to a new subject.<br>
+                        <code>"BACKCHANNEL"</code> - Short affirmations like "uh-huh", "right".<br>
+                        <code>"TERMINATE"</code> - User wants to end the conversation.
+                    </td></tr>
+                    <tr><td><code>STRATEGY_MATRIX</code></td><td>
+                        For each intent, a dictionary of strategy weights (must sum to 100):<br>
+                        <code>"RESUME"</code> (Hold) - Ignore the interruption, finish the current utterance.<br>
+                        <code>"BRIDGE"</code> (Soft Hold) - Briefly acknowledge user, then finish the thought.<br>
+                        <code>"YIELD"</code> (Switch) - Abandon current utterance, respond to user's new input.<br>
+                        <code>"EXIT"</code> - End the session gracefully.
+                    </td></tr>
+                </table>
+                <br>
+                <strong>Example: Always-Yield baseline (deterministic)</strong>
+                <pre>
+{
+  "MODE": "deterministic",
+  "STRATEGY_MATRIX": {
+    "COMPETITIVE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "EXIT": 0},
+    "COOPERATIVE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "EXIT": 0},
+    "TOPIC_CHANGE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "EXIT": 0},
+    "BACKCHANNEL": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "EXIT": 0},
+    "TERMINATE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 0, "EXIT": 100}
+  }
+}</pre>
+                <strong>Example: Literature-grounded probabilistic (Q1: High Agency / Low Communion)</strong>
                 <pre>
 {
   "MODE": "probabilistic",
-  "INTENTS": {
-    "COMPETITIVE": "User disagrees, corrects, or tells you to be quiet."
-  },
   "STRATEGY_MATRIX": {
-    "COMPETITIVE": {"RESUME": 80, "BRIDGE": 20, "YIELD": 0, "EXIT": 0}
+    "COMPETITIVE": {"RESUME": 70, "BRIDGE": 20, "YIELD": 10, "EXIT": 0},
+    "COOPERATIVE": {"RESUME": 20, "BRIDGE": 50, "YIELD": 30, "EXIT": 0},
+    "TOPIC_CHANGE": {"RESUME": 40, "BRIDGE": 40, "YIELD": 20, "EXIT": 0},
+    "BACKCHANNEL": {"RESUME": 90, "BRIDGE": 10, "YIELD": 0, "EXIT": 0},
+    "TERMINATE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 0, "EXIT": 100}
   }
+}</pre>
+                <strong>Example: Autonomous LLM-driven</strong>
+                <pre>
+{
+  "MODE": "autonomous"
 }</pre>
             </div>
         </details>
@@ -236,6 +349,15 @@
             <summary>5. secrets.json (API Keys)</summary>
             <div class="doc-content">
                 Contains the API keys required to generate responses and voice. Because this is a public platform, <b>do not share this file with anyone</b>. Uploading it stores it securely in the database linked only to your researcher account.
+                <br><br>
+                <table class="config-table">
+                    <tr><th>Key</th><th>Required For</th><th>Description</th></tr>
+                    <tr><td><code>OPENAI_API_KEY</code></td><td>OpenAI LLM & TTS</td><td>Your OpenAI API key (starts with <code>sk-proj-...</code>).</td></tr>
+                    <tr><td><code>ELEVEN_API_KEY</code></td><td>ElevenLabs TTS + Transcription</td><td>Your ElevenLabs API key. Also used for speech-to-text transcription (Scribe v2).</td></tr>
+                    <tr><td><code>GEMINI_API_KEY</code></td><td>Gemini LLM & TTS</td><td>Your Google Gemini API key (starts with <code>AIza...</code>).</td></tr>
+                </table>
+                <br>
+                <strong>Note:</strong> You need at minimum one LLM key (OpenAI or Gemini) and one ElevenLabs key (for transcription). TTS can use any of the three providers.
                 <pre>
 {
   "OPENAI_API_KEY": "sk-proj-...",
