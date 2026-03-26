@@ -673,7 +673,16 @@
     socket.on('tts_failed', (data) => {
         isBotSpeaking = false;
         waitingForResponse = false;
-        if (data.is_final && pendingSurvey && pendingSurveyMeta) {
+        // If the server sent survey data with the failure, use it directly
+        if (data.is_final && data.survey) {
+            const meta = {
+                survey_type: data.survey_type || "individual",
+                set_size: data.set_size || 1,
+                set_labels: data.set_labels || [],
+                set_personas: data.set_personas || []
+            };
+            renderSurvey(data.survey, meta);
+        } else if (data.is_final && pendingSurvey && pendingSurveyMeta) {
             renderSurvey(pendingSurvey, pendingSurveyMeta);
             pendingSurvey = null;
             pendingSurveyMeta = null;
@@ -704,9 +713,27 @@
             set_personas: data.set_personas || []
         } : null;
 
-        const audioData = atob(data.audio_b64);
-        const arrayBuffer = new Uint8Array(audioData.length).map((_, i) => audioData.charCodeAt(i)).buffer;
-        const buffer = await botAudioContext.decodeAudioData(arrayBuffer);
+        // Ensure AudioContext is active (Chrome suspends it without user gesture)
+        if (botAudioContext.state === 'suspended') {
+            await botAudioContext.resume();
+        }
+
+        let buffer;
+        try {
+            const audioData = atob(data.audio_b64);
+            const arrayBuffer = new Uint8Array(audioData.length).map((_, i) => audioData.charCodeAt(i)).buffer;
+            buffer = await botAudioContext.decodeAudioData(arrayBuffer);
+        } catch(e) {
+            console.error("Audio decode failed:", e);
+            isBotSpeaking = false;
+            waitingForResponse = false;
+            if (pendingSurvey && pendingSurveyMeta) {
+                renderSurvey(pendingSurvey, pendingSurveyMeta);
+                pendingSurvey = null;
+                pendingSurveyMeta = null;
+            }
+            return;
+        }
 
         currentSource = botAudioContext.createBufferSource();
         currentSource.buffer = buffer;

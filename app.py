@@ -723,9 +723,20 @@ def send_audio(sid, text, persona, cfg, is_final=False, send_survey=None):
     if not audio_data:
         print(f"TTS Warning: No audio generated for text: {text[:80]}...")
         emit('status', {"msg": "TTS failed - no audio generated. Listening...", "color": "red"})
-        emit('tts_failed', {"is_final": is_final})
+        fail_payload = {"is_final": is_final}
+        if send_survey:
+            session_cfg = cfg["session"]
+            fail_payload["survey"] = session_cfg.get("SURVEY_QUESTIONS", [])
+            fail_payload["survey_type"] = session_cfg.get("SURVEY_TYPE", "individual")
+            fail_payload["set_size"] = session_cfg.get("SET_SIZE", 1)
+            fail_payload["set_labels"] = session_cfg.get("SET_LABELS", [])
+            session_state = active_sessions.get(sid)
+            if session_state:
+                fail_payload["set_personas"] = session_state.get("set_personas", [])
+        emit('tts_failed', fail_payload)
         return
 
+    print(f"[{sid[:8]}] TTS OK | is_final={is_final} | send_survey={send_survey} | audio_bytes={len(audio_data)}")
     active_sessions[sid]["bot_text"] = text
     active_sessions[sid]["is_speaking"] = True
 
