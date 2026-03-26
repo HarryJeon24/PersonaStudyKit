@@ -421,6 +421,16 @@
     <button class="btn-main" onclick="continueToNext()">Continue to Next Session</button>
 </div>
 
+<div id="briefing-page" class="card hidden" style="max-width: 550px; text-align: center;">
+    <h2 style="color: #81d4fa;">Scenario Briefing</h2>
+    <p style="color: #aaa; font-size: 0.9rem; margin-bottom: 15px;">Please read the following scenario carefully before starting.</p>
+    <div style="background: #2c2c2c; border-radius: 8px; padding: 25px; margin: 20px 0; text-align: left;">
+        <p id="briefing-context" style="color: #e0e0e0; font-size: 1rem; line-height: 1.6; margin: 0;"></p>
+    </div>
+    <p style="color: #888; font-size: 0.85rem; margin-bottom: 20px;">When you are ready, click below to begin the conversation.</p>
+    <button class="btn-main" onclick="briefingReady()">I'm Ready</button>
+</div>
+
 <div id="survey-page" class="card hidden" style="max-width: 900px;">
     <h2 id="survey-title">Post-Session Survey</h2>
     <p id="survey-subtitle" style="color: #aaa; font-size: 0.9rem; margin-bottom: 20px;"></p>
@@ -592,6 +602,7 @@
                         let percent = (botAudioContext.currentTime - botPlayStartTime) / currentBotDuration;
                         socket.emit('interrupt_signal', { percent });
                         if (currentSource) { currentSource.onended = null; currentSource.stop(); isBotSpeaking = false; }
+                        waitingForResponse = false;
                     }
                     if (!isUserRecording) {
                         isUserRecording = true;
@@ -641,6 +652,16 @@
     function continueToNext() {
         showPage('exp-page');
         socket.emit('continue_to_next');
+    }
+
+    socket.on('show_briefing', data => {
+        document.getElementById('briefing-context').innerText = data.context;
+        showPage('briefing-page');
+    });
+
+    function briefingReady() {
+        showPage('exp-page');
+        socket.emit('briefing_ready');
     }
 
     socket.on('set_persona', data => {

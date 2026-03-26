@@ -385,17 +385,27 @@ def start_experiment(data):
         active_sessions[sid]["set_personas"] = []
 
     persona = personas_list[idx]
-    emit('set_persona', {"name": persona.get('name')})
 
     survey_type = session_configs["session"].get("SURVEY_TYPE", "individual")
     set_labels = session_configs["session"].get("SET_LABELS", [])
     if survey_type == "comparative" and set_size > 1:
         current_set_pos = len(active_sessions[sid]["set_personas"])
         label = set_labels[current_set_pos] if current_set_pos < len(set_labels) else f"Session {current_set_pos + 1}"
-        emit('status', {"msg": f"Starting {label}: {persona.get('name')} ({current_set_pos + 1}/{set_size})", "color": "magenta"})
+        emit('set_persona', {"name": label})
+        emit('status', {"msg": f"Starting {label} ({current_set_pos + 1}/{set_size})", "color": "magenta"})
     else:
+        emit('set_persona', {"name": persona.get('name')})
         emit('status', {"msg": f"Starting Session: {persona.get('name')}", "color": "magenta"})
 
+    tester_context = persona.get("tester_context", "")
+    if tester_context:
+        emit('show_briefing', {"context": tester_context})
+        return  # Wait for tester to click "Ready" before starting the conversation
+
+    _start_conversation(sid, persona, session_configs)
+
+
+def _start_conversation(sid, persona, session_configs):
     prompt = f"{persona.get('persona', '')}\nGive a very short, 1-sentence opening greeting."
     msg = process_llm([{"role": "developer", "content": prompt}], persona, session_configs)
 
@@ -560,6 +570,16 @@ def handle_interrupt(data):
         emit('stop_audio_playback')
 
 
+@socketio.on('briefing_ready')
+def handle_briefing_ready():
+    sid = request.sid
+    session_state = active_sessions.get(sid)
+    if not session_state: return
+    cfg = session_state["configs"]
+    persona = cfg["personas"][session_state["persona_idx"]]
+    _start_conversation(sid, persona, cfg)
+
+
 @socketio.on('continue_to_next')
 def handle_continue_to_next():
     sid = request.sid
@@ -672,9 +692,28 @@ def mark_persona_complete(sid, persona_name):
     conn.close()
 
 
+def strip_stage_directions(text):
+    """Remove stage directions like *(sighs)*, *sighs*, (sighs heavily) before sending to TTS."""
+    import re
+    # Remove *(...)*  or *(...)* patterns
+    text = re.sub(r'\*\([^)]*\)\*', '', text)
+    # Remove *...* patterns (asterisk-wrapped actions)
+    text = re.sub(r'\*[^*]+\*', '', text)
+    # Remove standalone (...) that look like stage directions (short, no sentence structure)
+    text = re.sub(r'\([^)]{1,50}\)', '', text)
+    # Clean up extra whitespace
+    text = re.sub(r'  +', ' ', text).strip()
+    return text
+
+
 def send_audio(sid, text, persona, cfg, is_final=False, send_survey=None):
     model_cfg = cfg["model"]
     provider = persona.get("tts_provider", model_cfg.get("TTS_PROVIDER", "openai")).lower()
+
+    # Strip stage directions so TTS doesn't read them aloud
+    tts_text = strip_stage_directions(text)
+    if not tts_text:
+        tts_text = text  # Fallback if stripping removed everything
 
     # Dynamically grab clients based on researcher keys
     o_client, e_client, g_client = get_api_clients(cfg.get("secrets", {}))
@@ -685,10 +724,10 @@ def send_audio(sid, text, persona, cfg, is_final=False, send_survey=None):
             res = o_client.audio.speech.create(model=model_cfg.get("OPENAI_TTS_MODEL", "gpt-4o-mini-tts"),
                                                voice=persona.get("voice_id",
                                                                  model_cfg.get("OPENAI_DEFAULT_VOICE", "coral")),
-                                               input=text, response_format="mp3")
+                                               input=tts_text, response_format="mp3")
             audio_data = res.content
         elif provider == "elevenlabs" and e_client:
-            stream = e_client.text_to_speech.convert(text=text, voice_id=persona.get("voice_id", model_cfg.get(
+            stream = e_client.text_to_speech.convert(text=tts_text, voice_id=persona.get("voice_id", model_cfg.get(
                 "ELEVENLABS_DEFAULT_VOICE_ID", "JBFqnCBsd6RMkjVDRZzb")),
                                                      model_id=model_cfg.get("ELEVENLABS_MODEL_ID", "eleven_flash_v2_5"),
                                                      output_format="mp3_44100_128")
@@ -701,7 +740,7 @@ def send_audio(sid, text, persona, cfg, is_final=False, send_survey=None):
                         voice_name=persona.get("voice_id", model_cfg.get("GEMINI_DEFAULT_VOICE", "Aoede")))))
             )
             res = g_client.models.generate_content(
-                model=model_cfg.get("GEMINI_TTS_MODEL", "gemini-2.5-flash-preview-tts"), contents=text, config=conf)
+                model=model_cfg.get("GEMINI_TTS_MODEL", "gemini-2.5-flash-preview-tts"), contents=tts_text, config=conf)
 
             for part in res.candidates[0].content.parts:
                 if getattr(part, "inline_data", None):
