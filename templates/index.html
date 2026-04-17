@@ -154,11 +154,11 @@
       "interruption_config": {
         "MODE": "deterministic",
         "STRATEGY_MATRIX": {
-          "COMPETITIVE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "EXIT": 0},
-          "COOPERATIVE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "EXIT": 0},
-          "TOPIC_CHANGE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "EXIT": 0},
-          "BACKCHANNEL": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "EXIT": 0},
-          "TERMINATE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 0, "EXIT": 100}
+          "COMPETITIVE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "OVERRIDE": 0},
+          "COOPERATIVE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "OVERRIDE": 0},
+          "TOPIC_CHANGE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "OVERRIDE": 0},
+          "BACKCHANNEL": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "OVERRIDE": 0},
+          "TERMINATE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "OVERRIDE": 0}
         }
       }
     },
@@ -168,7 +168,7 @@
       "interruption_config": {
         "MODE": "probabilistic",
         "STRATEGY_MATRIX": {
-          "COMPETITIVE": {"RESUME": 70, "BRIDGE": 20, "YIELD": 10, "EXIT": 0}
+          "COMPETITIVE": {"RESUME": 50, "BRIDGE": 15, "YIELD": 10, "OVERRIDE": 25}
         }
       }
     },
@@ -309,7 +309,7 @@
                         <code>"RESUME"</code> (Hold) - Ignore the interruption, finish the current utterance.<br>
                         <code>"BRIDGE"</code> (Soft Hold) - Briefly acknowledge user, then finish the thought.<br>
                         <code>"YIELD"</code> (Switch) - Abandon current utterance, respond to user's new input.<br>
-                        <code>"EXIT"</code> - End the session gracefully.
+                        <code>"OVERRIDE"</code> (Forced Hold) - Like RESUME but the user cannot interrupt the bot's response this turn. The bot still hears what the user said and processes it on the next turn.
                     </td></tr>
                 </table>
                 <br>
@@ -318,11 +318,11 @@
 {
   "MODE": "deterministic",
   "STRATEGY_MATRIX": {
-    "COMPETITIVE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "EXIT": 0},
-    "COOPERATIVE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "EXIT": 0},
-    "TOPIC_CHANGE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "EXIT": 0},
-    "BACKCHANNEL": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "EXIT": 0},
-    "TERMINATE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 0, "EXIT": 100}
+    "COMPETITIVE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "OVERRIDE": 0},
+    "COOPERATIVE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "OVERRIDE": 0},
+    "TOPIC_CHANGE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "OVERRIDE": 0},
+    "BACKCHANNEL": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "OVERRIDE": 0},
+    "TERMINATE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "OVERRIDE": 0}
   }
 }</pre>
                 <strong>Example: Literature-grounded probabilistic (Q1: High Agency / Low Communion)</strong>
@@ -330,11 +330,11 @@
 {
   "MODE": "probabilistic",
   "STRATEGY_MATRIX": {
-    "COMPETITIVE": {"RESUME": 70, "BRIDGE": 20, "YIELD": 10, "EXIT": 0},
-    "COOPERATIVE": {"RESUME": 20, "BRIDGE": 50, "YIELD": 30, "EXIT": 0},
-    "TOPIC_CHANGE": {"RESUME": 40, "BRIDGE": 40, "YIELD": 20, "EXIT": 0},
-    "BACKCHANNEL": {"RESUME": 90, "BRIDGE": 10, "YIELD": 0, "EXIT": 0},
-    "TERMINATE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 0, "EXIT": 100}
+    "COMPETITIVE": {"RESUME": 50, "BRIDGE": 15, "YIELD": 10, "OVERRIDE": 25},
+    "COOPERATIVE": {"RESUME": 15, "BRIDGE": 45, "YIELD": 30, "OVERRIDE": 10},
+    "TOPIC_CHANGE": {"RESUME": 30, "BRIDGE": 30, "YIELD": 20, "OVERRIDE": 20},
+    "BACKCHANNEL": {"RESUME": 80, "BRIDGE": 10, "YIELD": 0, "OVERRIDE": 10},
+    "TERMINATE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "OVERRIDE": 0}
   }
 }</pre>
                 <strong>Example: Autonomous LLM-driven</strong>
@@ -442,6 +442,88 @@
     const socket = io();
     let authMode = 'login';
     let activeUser = "";
+
+    // --- CONNECTION MONITORING ---
+    socket.on('disconnect', () => {
+        console.warn("[socket] Disconnected from server");
+        document.getElementById('status').innerText = "Status: Disconnected — reconnecting...";
+        document.getElementById('status').style.color = "red";
+    });
+    socket.on('connect', () => {
+        console.log("[socket] Connected (sid=" + socket.id + ")");
+        // Check if user was mid-experiment on ANY experiment-related page
+        const midExpPages = ['exp-page', 'transition-page', 'briefing-page', 'survey-page'];
+        const onExpPage = midExpPages.some(id => {
+            const el = document.getElementById(id);
+            return el && !el.classList.contains('hidden');
+        });
+        if (activeUser && onExpPage) {
+            console.log("[socket] Mid-experiment reconnect — attempting rejoin for user: " + activeUser);
+            document.getElementById('status').innerText = "Status: Reconnected — restoring session...";
+            document.getElementById('status').style.color = "yellow";
+            socket.emit('rejoin_session', { username: activeUser });
+        }
+    });
+
+    let pendingActionAfterRejoin = null; // action to retry after session is restored
+    let pendingSurveySubmission = null; // survey answers to retry after reconnect
+
+    socket.on('request_rejoin', () => {
+        // Server lost our session — try to rejoin automatically
+        if (activeUser) {
+            console.log("[request_rejoin] Server asked us to rejoin — sending rejoin_session");
+            socket.emit('rejoin_session', { username: activeUser });
+        }
+    });
+
+    socket.on('rejoin_result', (data) => {
+        if (data.success) {
+            console.log("[rejoin] Session restored successfully | needs_survey=" + !!data.needs_survey);
+            document.getElementById('mic-status').innerText = "Auto-listening enabled";
+            document.getElementById('mic-status').style.color = "#666";
+            // Reset client-side gates
+            waitingForResponse = false;
+            isBotSpeaking = false;
+            isUninterruptible = false;
+            // If we have pending survey answers, re-submit them
+            if (pendingSurveySubmission) {
+                console.log("[rejoin] Retrying pending survey submission");
+                socket.emit('submit_survey', pendingSurveySubmission);
+                pendingSurveySubmission = null;
+                showPage('exp-page');
+                return;
+            }
+            // Server told us survey/transition is needed — it will emit the appropriate event
+            if (data.needs_survey) {
+                return; // show_survey event is coming from server
+            }
+            // Retry any pending action that triggered the rejoin
+            if (pendingActionAfterRejoin) {
+                console.log("[rejoin] Retrying pending action: " + pendingActionAfterRejoin);
+                const action = pendingActionAfterRejoin;
+                pendingActionAfterRejoin = null;
+                if (action === 'continue_to_next') {
+                    socket.emit('continue_to_next');
+                } else if (action === 'briefing_ready') {
+                    socket.emit('briefing_ready');
+                }
+            }
+        } else {
+            console.warn("[rejoin] No saved session — session lost");
+            document.getElementById('status').innerText = "Status: Session lost. Please refresh to start over.";
+            document.getElementById('status').style.color = "red";
+            document.getElementById('mic-status').innerText = "Session lost — refresh page";
+            document.getElementById('mic-status').style.color = "red";
+            pendingActionAfterRejoin = null;
+        }
+    });
+
+    // --- KEEPALIVE PING (prevents Cloud Run idle timeout) ---
+    setInterval(() => {
+        if (socket.connected) {
+            socket.emit('ping_keepalive');
+        }
+    }, 15000);
 
     // --- UI NAVIGATION ---
     function showPage(pageId) {
@@ -561,6 +643,10 @@
     let isBotSpeaking = false, isUserRecording = false, pendingSurvey = null, lastSpeechTime = 0;
     let pendingSurveyMeta = null; // stores survey_type, set_labels, set_personas, set_size
     let waitingForResponse = false; // gate to prevent sending audio while bot is thinking/responding
+    let responseTimer = null; // safety timeout to reset waitingForResponse if server never responds
+    let isUninterruptible = false; // OVERRIDE turn — block interrupts but still record
+    let pendingOverrideBlob = null; // queued user audio recorded during OVERRIDE, sent after bot finishes
+    let pendingTransition = null; // transition data to show after final audio finishes
 
     async function setupAutoMic() {
         try {
@@ -598,12 +684,31 @@
                 document.getElementById('vol-bar').style.width = Math.min(avg * 3, 100) + "%";
 
                 if (avg > 25) {
-                    if (isBotSpeaking) {
-                        let percent = (botAudioContext.currentTime - botPlayStartTime) / currentBotDuration;
-                        socket.emit('interrupt_signal', { percent });
-                        if (currentSource) { currentSource.onended = null; currentSource.stop(); isBotSpeaking = false; }
-                        waitingForResponse = false;
+                    if (isBotSpeaking && !isUninterruptible) {
+                        // Final turn audio — don't allow normal interruption, show survey/transition immediately
+                        if (pendingSurvey && pendingSurveyMeta) {
+                            if (currentSource) { currentSource.onended = null; currentSource.stop(); }
+                            isBotSpeaking = false;
+                            waitingForResponse = false;
+                            console.log("[VAD] Final audio interrupted — rendering pending survey");
+                            renderSurvey(pendingSurvey, pendingSurveyMeta);
+                            pendingSurvey = null;
+                            pendingSurveyMeta = null;
+                        } else if (pendingTransition) {
+                            if (currentSource) { currentSource.onended = null; currentSource.stop(); }
+                            isBotSpeaking = false;
+                            waitingForResponse = false;
+                            console.log("[VAD] Final audio interrupted — showing pending transition");
+                            showTransition(pendingTransition);
+                            pendingTransition = null;
+                        } else {
+                            let percent = (botAudioContext.currentTime - botPlayStartTime) / currentBotDuration;
+                            socket.emit('interrupt_signal', { percent });
+                            if (currentSource) { currentSource.onended = null; currentSource.stop(); isBotSpeaking = false; }
+                            waitingForResponse = false;
+                        }
                     }
+                    // Allow recording even during OVERRIDE — audio is queued and sent after bot finishes
                     if (!isUserRecording) {
                         isUserRecording = true;
                         document.getElementById('mic-status').innerText = "🔴 Recording Speech...";
@@ -622,11 +727,29 @@
 
             mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
             mediaRecorder.onstop = () => {
-                if (!waitingForResponse) {
-                    waitingForResponse = true;
-                    socket.emit('user_audio_blob', new Blob(audioChunks, { type: 'audio/webm' }));
-                }
+                const blob = new Blob(audioChunks, { type: 'audio/webm' });
                 audioChunks = [];
+                // Skip empty/tiny blobs (just noise artifacts, not real speech)
+                if (blob.size < 1000) {
+                    console.log("[onstop] Blob too small (" + blob.size + " bytes) — skipping");
+                    return;
+                }
+                if (isUninterruptible) {
+                    // OVERRIDE: queue audio, send after bot finishes
+                    console.log("[onstop] OVERRIDE active — queuing audio blob");
+                    pendingOverrideBlob = blob;
+                } else if (!waitingForResponse) {
+                    waitingForResponse = true;
+                    socket.emit('user_audio_blob', blob);
+                    // Safety: if server never responds, unlock after 5s
+                    if (responseTimer) clearTimeout(responseTimer);
+                    responseTimer = setTimeout(() => {
+                        if (waitingForResponse) {
+                            console.warn("[responseTimer] Server never responded — resetting waitingForResponse");
+                            waitingForResponse = false;
+                        }
+                    }, 5000);
+                }
             };
 
         } catch (err) {
@@ -637,7 +760,24 @@
         }
     }
 
-    socket.on('show_transition', data => {
+    socket.on('unlock_input', () => {
+        if (responseTimer) { clearTimeout(responseTimer); responseTimer = null; }
+        waitingForResponse = false;
+    });
+
+    socket.on('show_survey', data => {
+        stopMicAndAudio();
+        waitingForResponse = false;
+        const meta = {
+            survey_type: data.survey_type || "individual",
+            set_size: data.set_size || 1,
+            set_labels: data.set_labels || [],
+            set_personas: data.set_personas || []
+        };
+        renderSurvey(data.survey, meta);
+    });
+
+    function showTransition(data) {
         stopMicAndAudio();
         waitingForResponse = false;
         document.getElementById('transition-completed').innerText =
@@ -647,9 +787,20 @@
         document.getElementById('transition-next').innerText =
             `When you are ready, click below to begin ${data.next_label}.`;
         showPage('transition-page');
+    }
+
+    socket.on('show_transition', data => {
+        if (isBotSpeaking) {
+            // Audio still playing — queue it, onended will pick it up
+            console.log("[show_transition] Bot still speaking — queuing transition");
+            pendingTransition = data;
+        } else {
+            showTransition(data);
+        }
     });
 
     function continueToNext() {
+        pendingActionAfterRejoin = 'continue_to_next';
         showPage('exp-page');
         socket.emit('continue_to_next');
     }
@@ -660,6 +811,7 @@
     });
 
     function briefingReady() {
+        pendingActionAfterRejoin = 'briefing_ready';
         showPage('exp-page');
         socket.emit('briefing_ready');
     }
@@ -667,6 +819,7 @@
     socket.on('set_persona', data => {
         document.getElementById('current-persona').innerText = "Persona: " + data.name;
         document.getElementById('chat-box').innerHTML = "";
+        pendingSurveySubmission = null; // Survey was processed, clear retry data
     });
     socket.on('status', data => { document.getElementById('status').innerText = "Status: " + data.msg; document.getElementById('status').style.color = data.color; });
     socket.on('chat', data => {
@@ -693,6 +846,8 @@
 
     socket.on('tts_failed', (data) => {
         isBotSpeaking = false;
+        isUninterruptible = false;
+        if (responseTimer) { clearTimeout(responseTimer); responseTimer = null; }
         waitingForResponse = false;
         // If the server sent survey data with the failure, use it directly
         if (data.is_final && data.survey) {
@@ -707,6 +862,11 @@
             renderSurvey(pendingSurvey, pendingSurveyMeta);
             pendingSurvey = null;
             pendingSurveyMeta = null;
+        } else if (data.transition) {
+            showTransition(data.transition);
+        } else if (pendingTransition) {
+            showTransition(pendingTransition);
+            pendingTransition = null;
         }
     });
 
@@ -715,78 +875,116 @@
             currentSource.onended = null;
             currentSource.stop();
             isBotSpeaking = false;
+            // If there was a pending survey (e.g. final audio got interrupted), show it
+            if (pendingSurvey && pendingSurveyMeta) {
+                renderSurvey(pendingSurvey, pendingSurveyMeta);
+                pendingSurvey = null;
+                pendingSurveyMeta = null;
+            }
         }
     });
 
+    function flushPendingOverrideBlob() {
+        if (pendingOverrideBlob && !waitingForResponse) {
+            console.log("[flush] Sending queued OVERRIDE audio blob");
+            waitingForResponse = true;
+            socket.emit('user_audio_blob', pendingOverrideBlob);
+            pendingOverrideBlob = null;
+            // Safety timer for the flushed blob
+            if (responseTimer) clearTimeout(responseTimer);
+            responseTimer = setTimeout(() => {
+                if (waitingForResponse) {
+                    console.warn("[responseTimer] Server never responded to flushed blob — resetting");
+                    waitingForResponse = false;
+                }
+            }, 5000);
+        }
+    }
+
+    // Reset all audio/speaking state and show any pending survey/transition
+    function recoverFromStuckState(reason) {
+        console.warn("[recoverFromStuckState] " + reason);
+        if (speakingTimeout) { clearTimeout(speakingTimeout); speakingTimeout = null; }
+        if (responseTimer) { clearTimeout(responseTimer); responseTimer = null; }
+        isBotSpeaking = false;
+        isUninterruptible = false;
+        waitingForResponse = false;
+        currentSource = null;
+        flushPendingOverrideBlob();
+        if (pendingSurvey && pendingSurveyMeta) {
+            renderSurvey(pendingSurvey, pendingSurveyMeta);
+            pendingSurvey = null;
+            pendingSurveyMeta = null;
+        } else if (pendingTransition) {
+            showTransition(pendingTransition);
+            pendingTransition = null;
+        } else {
+            document.getElementById('mic-status').innerText = "Auto-listening enabled";
+            document.getElementById('mic-status').style.color = "#666";
+            document.getElementById('status').innerText = "Status: Listening...";
+            document.getElementById('status').style.color = "#666";
+        }
+    }
+
     socket.on('play_audio', async (data) => {
-        // Stop any currently playing audio to prevent overlap
-        if (currentSource) {
-            try { currentSource.onended = null; currentSource.stop(); } catch(e) {}
-            currentSource = null;
-        }
-        isBotSpeaking = true;
-        currentBotDuration = data.duration_est;
-        pendingSurvey = data.survey || null;
-        pendingSurveyMeta = data.survey ? {
-            survey_type: data.survey_type || "individual",
-            set_size: data.set_size || 1,
-            set_labels: data.set_labels || [],
-            set_personas: data.set_personas || []
-        } : null;
-
-        // Ensure AudioContext is active (Chrome suspends it without user gesture)
-        if (botAudioContext.state === 'suspended') {
-            await botAudioContext.resume();
-        }
-
-        let buffer;
+        console.log("[play_audio] is_final=" + data.is_final + " has_survey=" + !!data.survey + " has_transition=" + !!data.transition + " audio_len=" + (data.audio_b64 ? data.audio_b64.length : 0));
         try {
-            const audioData = atob(data.audio_b64);
-            const arrayBuffer = new Uint8Array(audioData.length).map((_, i) => audioData.charCodeAt(i)).buffer;
-            buffer = await botAudioContext.decodeAudioData(arrayBuffer);
-        } catch(e) {
-            console.error("Audio decode failed:", e);
-            isBotSpeaking = false;
-            waitingForResponse = false;
-            if (pendingSurvey && pendingSurveyMeta) {
-                renderSurvey(pendingSurvey, pendingSurveyMeta);
-                pendingSurvey = null;
-                pendingSurveyMeta = null;
-            }
-            return;
-        }
-
-        currentSource = botAudioContext.createBufferSource();
-        currentSource.buffer = buffer;
-        currentSource.connect(botAudioContext.destination);
-        currentSource.start(0);
-        botPlayStartTime = botAudioContext.currentTime;
-
-        currentSource.onended = () => {
-            if (speakingTimeout) { clearTimeout(speakingTimeout); speakingTimeout = null; }
-            isBotSpeaking = false;
-            waitingForResponse = false;
-            if (pendingSurvey && pendingSurveyMeta) {
-                renderSurvey(pendingSurvey, pendingSurveyMeta);
-                pendingSurvey = null;
-                pendingSurveyMeta = null;
-            }
-        };
-
-        // Safety timeout: if onended never fires, recover after estimated duration + 10s
-        if (speakingTimeout) clearTimeout(speakingTimeout);
-        speakingTimeout = setTimeout(() => {
-            if (isBotSpeaking) {
-                console.warn("Speaking timeout - recovering from stuck state");
-                isBotSpeaking = false;
-                waitingForResponse = false;
+            // Stop any currently playing audio to prevent overlap
+            if (currentSource) {
+                try { currentSource.onended = null; currentSource.stop(); } catch(e) {}
                 currentSource = null;
-                document.getElementById('mic-status').innerText = "Auto-listening enabled";
-                document.getElementById('mic-status').style.color = "#666";
-                document.getElementById('status').innerText = "Status: Listening...";
-                document.getElementById('status').style.color = "#666";
             }
-        }, (buffer.duration * 1000) + 10000);
+            isBotSpeaking = true;
+            isUninterruptible = !!data.uninterruptible;
+            currentBotDuration = data.duration_est;
+            pendingSurvey = data.survey || null;
+            pendingSurveyMeta = data.survey ? {
+                survey_type: data.survey_type || "individual",
+                set_size: data.set_size || 1,
+                set_labels: data.set_labels || [],
+                set_personas: data.set_personas || []
+            } : null;
+            pendingTransition = data.transition || null;
+
+            // Ensure AudioContext is active (Chrome suspends it without user gesture)
+            if (botAudioContext.state === 'suspended') {
+                await botAudioContext.resume();
+            }
+
+            let buffer;
+            try {
+                const audioData = atob(data.audio_b64);
+                const arrayBuffer = new Uint8Array(audioData.length).map((_, i) => audioData.charCodeAt(i)).buffer;
+                buffer = await botAudioContext.decodeAudioData(arrayBuffer);
+            } catch(e) {
+                console.error("Audio decode failed:", e);
+                recoverFromStuckState("Audio decode failed: " + e.message);
+                return;
+            }
+
+            currentSource = botAudioContext.createBufferSource();
+            currentSource.buffer = buffer;
+            currentSource.connect(botAudioContext.destination);
+            currentSource.start(0);
+            botPlayStartTime = botAudioContext.currentTime;
+
+            currentSource.onended = () => {
+                console.log("[onended] fired. pendingSurvey=" + !!pendingSurvey + " pendingTransition=" + !!pendingTransition);
+                recoverFromStuckState("onended");
+            };
+
+            // Safety timeout: if onended never fires, recover after estimated duration + 5s
+            if (speakingTimeout) clearTimeout(speakingTimeout);
+            speakingTimeout = setTimeout(() => {
+                if (isBotSpeaking) {
+                    recoverFromStuckState("Speaking safety timeout");
+                }
+            }, (buffer.duration * 1000) + 5000);
+
+        } catch(e) {
+            console.error("[play_audio] Unexpected error:", e);
+            recoverFromStuckState("Unexpected error in play_audio: " + e.message);
+        }
     });
 
     function stopMicAndAudio() {
@@ -800,10 +998,12 @@
             currentSource.onended = null;
             currentSource.stop();
             isBotSpeaking = false;
+            isUninterruptible = false;
         }
     }
 
     function renderSurvey(questions, meta) {
+        console.log("[renderSurvey] called with " + (questions ? questions.length : 0) + " questions, type=" + meta.survey_type);
         stopMicAndAudio();
         showPage('survey-page');
         const isComparative = meta.survey_type === "comparative" && meta.set_size > 1;
@@ -923,6 +1123,7 @@
             }
         });
 
+        pendingSurveySubmission = results; // Store for retry if connection drops
         socket.emit('submit_survey', results);
         showPage('exp-page');
         document.getElementById('chat-box').innerHTML = "";

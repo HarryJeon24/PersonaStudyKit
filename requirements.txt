@@ -1,0 +1,11 @@
+flask
+flask-socketio
+eventlet
+openai
+elevenlabs
+google-genai
+numpy
+# Google Cloud (production)
+google-cloud-firestore
+google-cloud-secret-manager
+gunicorn

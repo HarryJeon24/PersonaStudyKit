@@ -1,5 +1,5 @@
 {
-  "LLM_PROVIDER": "gemini",
+  "LLM_PROVIDER": "openai",
   "OPENAI_MODEL": "gpt-4o-mini",
   "GEMINI_MODEL": "gemini-2.5-flash",
   "REASONING_EFFORT": "low",

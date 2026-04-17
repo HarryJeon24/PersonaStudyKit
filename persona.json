@@ -9,11 +9,11 @@
       "interruption_config": {
         "MODE": "deterministic",
         "STRATEGY_MATRIX": {
-          "COMPETITIVE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "EXIT": 0},
-          "COOPERATIVE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "EXIT": 0},
-          "TOPIC_CHANGE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "EXIT": 0},
-          "BACKCHANNEL": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "EXIT": 0},
-          "TERMINATE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 0, "EXIT": 100}
+          "COMPETITIVE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "OVERRIDE": 0},
+          "COOPERATIVE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "OVERRIDE": 0},
+          "TOPIC_CHANGE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "OVERRIDE": 0},
+          "BACKCHANNEL": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "OVERRIDE": 0},
+          "TERMINATE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "OVERRIDE": 0}
         }
       }
     },
@@ -26,11 +26,11 @@
       "interruption_config": {
         "MODE": "probabilistic",
         "STRATEGY_MATRIX": {
-          "COMPETITIVE": {"RESUME": 70, "BRIDGE": 20, "YIELD": 10, "EXIT": 0},
-          "COOPERATIVE": {"RESUME": 20, "BRIDGE": 50, "YIELD": 30, "EXIT": 0},
-          "TOPIC_CHANGE": {"RESUME": 40, "BRIDGE": 40, "YIELD": 20, "EXIT": 0},
-          "BACKCHANNEL": {"RESUME": 90, "BRIDGE": 10, "YIELD": 0, "EXIT": 0},
-          "TERMINATE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 0, "EXIT": 100}
+          "COMPETITIVE": {"RESUME": 50, "BRIDGE": 15, "YIELD": 10, "OVERRIDE": 25},
+          "COOPERATIVE": {"RESUME": 15, "BRIDGE": 45, "YIELD": 30, "OVERRIDE": 10},
+          "TOPIC_CHANGE": {"RESUME": 30, "BRIDGE": 30, "YIELD": 20, "OVERRIDE": 20},
+          "BACKCHANNEL": {"RESUME": 80, "BRIDGE": 10, "YIELD": 0, "OVERRIDE": 10},
+          "TERMINATE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "OVERRIDE": 0}
         }
       }
     },
@@ -54,11 +54,11 @@
       "interruption_config": {
         "MODE": "deterministic",
         "STRATEGY_MATRIX": {
-          "COMPETITIVE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "EXIT": 0},
-          "COOPERATIVE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "EXIT": 0},
-          "TOPIC_CHANGE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "EXIT": 0},
-          "BACKCHANNEL": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "EXIT": 0},
-          "TERMINATE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 0, "EXIT": 100}
+          "COMPETITIVE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "OVERRIDE": 0},
+          "COOPERATIVE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "OVERRIDE": 0},
+          "TOPIC_CHANGE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "OVERRIDE": 0},
+          "BACKCHANNEL": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "OVERRIDE": 0},
+          "TERMINATE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "OVERRIDE": 0}
         }
       }
     },
@@ -71,11 +71,11 @@
       "interruption_config": {
         "MODE": "probabilistic",
         "STRATEGY_MATRIX": {
-          "COMPETITIVE": {"RESUME": 70, "BRIDGE": 20, "YIELD": 10, "EXIT": 0},
-          "COOPERATIVE": {"RESUME": 20, "BRIDGE": 50, "YIELD": 30, "EXIT": 0},
-          "TOPIC_CHANGE": {"RESUME": 40, "BRIDGE": 40, "YIELD": 20, "EXIT": 0},
-          "BACKCHANNEL": {"RESUME": 90, "BRIDGE": 10, "YIELD": 0, "EXIT": 0},
-          "TERMINATE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 0, "EXIT": 100}
+          "COMPETITIVE": {"RESUME": 45, "BRIDGE": 15, "YIELD": 10, "OVERRIDE": 30},
+          "COOPERATIVE": {"RESUME": 15, "BRIDGE": 45, "YIELD": 30, "OVERRIDE": 10},
+          "TOPIC_CHANGE": {"RESUME": 30, "BRIDGE": 25, "YIELD": 20, "OVERRIDE": 25},
+          "BACKCHANNEL": {"RESUME": 75, "BRIDGE": 10, "YIELD": 0, "OVERRIDE": 15},
+          "TERMINATE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "OVERRIDE": 0}
         }
       }
     },
@@ -99,11 +99,11 @@
       "interruption_config": {
         "MODE": "deterministic",
         "STRATEGY_MATRIX": {
-          "COMPETITIVE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "EXIT": 0},
-          "COOPERATIVE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "EXIT": 0},
-          "TOPIC_CHANGE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "EXIT": 0},
-          "BACKCHANNEL": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "EXIT": 0},
-          "TERMINATE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 0, "EXIT": 100}
+          "COMPETITIVE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "OVERRIDE": 0},
+          "COOPERATIVE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "OVERRIDE": 0},
+          "TOPIC_CHANGE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "OVERRIDE": 0},
+          "BACKCHANNEL": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "OVERRIDE": 0},
+          "TERMINATE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "OVERRIDE": 0}
         }
       }
     },
@@ -116,11 +116,11 @@
       "interruption_config": {
         "MODE": "probabilistic",
         "STRATEGY_MATRIX": {
-          "COMPETITIVE": {"RESUME": 40, "BRIDGE": 50, "YIELD": 10, "EXIT": 0},
-          "COOPERATIVE": {"RESUME": 10, "BRIDGE": 60, "YIELD": 30, "EXIT": 0},
-          "TOPIC_CHANGE": {"RESUME": 20, "BRIDGE": 60, "YIELD": 20, "EXIT": 0},
-          "BACKCHANNEL": {"RESUME": 90, "BRIDGE": 10, "YIELD": 0, "EXIT": 0},
-          "TERMINATE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 0, "EXIT": 100}
+          "COMPETITIVE": {"RESUME": 25, "BRIDGE": 40, "YIELD": 10, "OVERRIDE": 25},
+          "COOPERATIVE": {"RESUME": 5, "BRIDGE": 50, "YIELD": 30, "OVERRIDE": 15},
+          "TOPIC_CHANGE": {"RESUME": 10, "BRIDGE": 45, "YIELD": 20, "OVERRIDE": 25},
+          "BACKCHANNEL": {"RESUME": 80, "BRIDGE": 10, "YIELD": 0, "OVERRIDE": 10},
+          "TERMINATE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "OVERRIDE": 0}
         }
       }
     },
@@ -144,11 +144,11 @@
       "interruption_config": {
         "MODE": "deterministic",
         "STRATEGY_MATRIX": {
-          "COMPETITIVE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "EXIT": 0},
-          "COOPERATIVE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "EXIT": 0},
-          "TOPIC_CHANGE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "EXIT": 0},
-          "BACKCHANNEL": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "EXIT": 0},
-          "TERMINATE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 0, "EXIT": 100}
+          "COMPETITIVE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "OVERRIDE": 0},
+          "COOPERATIVE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "OVERRIDE": 0},
+          "TOPIC_CHANGE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "OVERRIDE": 0},
+          "BACKCHANNEL": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "OVERRIDE": 0},
+          "TERMINATE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "OVERRIDE": 0}
         }
       }
     },
@@ -161,11 +161,11 @@
       "interruption_config": {
         "MODE": "probabilistic",
         "STRATEGY_MATRIX": {
-          "COMPETITIVE": {"RESUME": 40, "BRIDGE": 50, "YIELD": 10, "EXIT": 0},
-          "COOPERATIVE": {"RESUME": 10, "BRIDGE": 60, "YIELD": 30, "EXIT": 0},
-          "TOPIC_CHANGE": {"RESUME": 20, "BRIDGE": 60, "YIELD": 20, "EXIT": 0},
-          "BACKCHANNEL": {"RESUME": 90, "BRIDGE": 10, "YIELD": 0, "EXIT": 0},
-          "TERMINATE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 0, "EXIT": 100}
+          "COMPETITIVE": {"RESUME": 25, "BRIDGE": 40, "YIELD": 10, "OVERRIDE": 25},
+          "COOPERATIVE": {"RESUME": 5, "BRIDGE": 50, "YIELD": 30, "OVERRIDE": 15},
+          "TOPIC_CHANGE": {"RESUME": 10, "BRIDGE": 45, "YIELD": 20, "OVERRIDE": 25},
+          "BACKCHANNEL": {"RESUME": 80, "BRIDGE": 10, "YIELD": 0, "OVERRIDE": 10},
+          "TERMINATE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "OVERRIDE": 0}
         }
       }
     },
@@ -189,11 +189,11 @@
       "interruption_config": {
         "MODE": "deterministic",
         "STRATEGY_MATRIX": {
-          "COMPETITIVE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "EXIT": 0},
-          "COOPERATIVE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "EXIT": 0},
-          "TOPIC_CHANGE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "EXIT": 0},
-          "BACKCHANNEL": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "EXIT": 0},
-          "TERMINATE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 0, "EXIT": 100}
+          "COMPETITIVE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "OVERRIDE": 0},
+          "COOPERATIVE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "OVERRIDE": 0},
+          "TOPIC_CHANGE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "OVERRIDE": 0},
+          "BACKCHANNEL": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "OVERRIDE": 0},
+          "TERMINATE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "OVERRIDE": 0}
         }
       }
     },
@@ -206,11 +206,11 @@
       "interruption_config": {
         "MODE": "probabilistic",
         "STRATEGY_MATRIX": {
-          "COMPETITIVE": {"RESUME": 0, "BRIDGE": 30, "YIELD": 70, "EXIT": 0},
-          "COOPERATIVE": {"RESUME": 0, "BRIDGE": 20, "YIELD": 80, "EXIT": 0},
-          "TOPIC_CHANGE": {"RESUME": 0, "BRIDGE": 10, "YIELD": 90, "EXIT": 0},
-          "BACKCHANNEL": {"RESUME": 80, "BRIDGE": 20, "YIELD": 0, "EXIT": 0},
-          "TERMINATE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 0, "EXIT": 100}
+          "COMPETITIVE": {"RESUME": 0, "BRIDGE": 25, "YIELD": 70, "OVERRIDE": 5},
+          "COOPERATIVE": {"RESUME": 0, "BRIDGE": 15, "YIELD": 80, "OVERRIDE": 5},
+          "TOPIC_CHANGE": {"RESUME": 0, "BRIDGE": 10, "YIELD": 90, "OVERRIDE": 0},
+          "BACKCHANNEL": {"RESUME": 75, "BRIDGE": 20, "YIELD": 0, "OVERRIDE": 5},
+          "TERMINATE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "OVERRIDE": 0}
         }
       }
     },
@@ -234,11 +234,11 @@
       "interruption_config": {
         "MODE": "deterministic",
         "STRATEGY_MATRIX": {
-          "COMPETITIVE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "EXIT": 0},
-          "COOPERATIVE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "EXIT": 0},
-          "TOPIC_CHANGE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "EXIT": 0},
-          "BACKCHANNEL": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "EXIT": 0},
-          "TERMINATE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 0, "EXIT": 100}
+          "COMPETITIVE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "OVERRIDE": 0},
+          "COOPERATIVE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "OVERRIDE": 0},
+          "TOPIC_CHANGE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "OVERRIDE": 0},
+          "BACKCHANNEL": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "OVERRIDE": 0},
+          "TERMINATE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "OVERRIDE": 0}
         }
       }
     },
@@ -251,11 +251,11 @@
       "interruption_config": {
         "MODE": "probabilistic",
         "STRATEGY_MATRIX": {
-          "COMPETITIVE": {"RESUME": 0, "BRIDGE": 30, "YIELD": 70, "EXIT": 0},
-          "COOPERATIVE": {"RESUME": 0, "BRIDGE": 20, "YIELD": 80, "EXIT": 0},
-          "TOPIC_CHANGE": {"RESUME": 0, "BRIDGE": 10, "YIELD": 90, "EXIT": 0},
-          "BACKCHANNEL": {"RESUME": 80, "BRIDGE": 20, "YIELD": 0, "EXIT": 0},
-          "TERMINATE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 0, "EXIT": 100}
+          "COMPETITIVE": {"RESUME": 0, "BRIDGE": 25, "YIELD": 70, "OVERRIDE": 5},
+          "COOPERATIVE": {"RESUME": 0, "BRIDGE": 15, "YIELD": 80, "OVERRIDE": 5},
+          "TOPIC_CHANGE": {"RESUME": 0, "BRIDGE": 10, "YIELD": 90, "OVERRIDE": 0},
+          "BACKCHANNEL": {"RESUME": 75, "BRIDGE": 20, "YIELD": 0, "OVERRIDE": 5},
+          "TERMINATE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "OVERRIDE": 0}
         }
       }
     },
@@ -279,11 +279,11 @@
       "interruption_config": {
         "MODE": "deterministic",
         "STRATEGY_MATRIX": {
-          "COMPETITIVE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "EXIT": 0},
-          "COOPERATIVE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "EXIT": 0},
-          "TOPIC_CHANGE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "EXIT": 0},
-          "BACKCHANNEL": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "EXIT": 0},
-          "TERMINATE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 0, "EXIT": 100}
+          "COMPETITIVE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "OVERRIDE": 0},
+          "COOPERATIVE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "OVERRIDE": 0},
+          "TOPIC_CHANGE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "OVERRIDE": 0},
+          "BACKCHANNEL": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "OVERRIDE": 0},
+          "TERMINATE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "OVERRIDE": 0}
         }
       }
     },
@@ -296,11 +296,11 @@
       "interruption_config": {
         "MODE": "probabilistic",
         "STRATEGY_MATRIX": {
-          "COMPETITIVE": {"RESUME": 20, "BRIDGE": 10, "YIELD": 70, "EXIT": 0},
-          "COOPERATIVE": {"RESUME": 10, "BRIDGE": 10, "YIELD": 80, "EXIT": 0},
-          "TOPIC_CHANGE": {"RESUME": 10, "BRIDGE": 10, "YIELD": 80, "EXIT": 0},
-          "BACKCHANNEL": {"RESUME": 90, "BRIDGE": 10, "YIELD": 0, "EXIT": 0},
-          "TERMINATE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 0, "EXIT": 100}
+          "COMPETITIVE": {"RESUME": 15, "BRIDGE": 10, "YIELD": 70, "OVERRIDE": 5},
+          "COOPERATIVE": {"RESUME": 5, "BRIDGE": 10, "YIELD": 80, "OVERRIDE": 5},
+          "TOPIC_CHANGE": {"RESUME": 5, "BRIDGE": 10, "YIELD": 80, "OVERRIDE": 5},
+          "BACKCHANNEL": {"RESUME": 85, "BRIDGE": 10, "YIELD": 0, "OVERRIDE": 5},
+          "TERMINATE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "OVERRIDE": 0}
         }
       }
     },
@@ -324,11 +324,11 @@
       "interruption_config": {
         "MODE": "deterministic",
         "STRATEGY_MATRIX": {
-          "COMPETITIVE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "EXIT": 0},
-          "COOPERATIVE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "EXIT": 0},
-          "TOPIC_CHANGE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "EXIT": 0},
-          "BACKCHANNEL": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "EXIT": 0},
-          "TERMINATE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 0, "EXIT": 100}
+          "COMPETITIVE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "OVERRIDE": 0},
+          "COOPERATIVE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "OVERRIDE": 0},
+          "TOPIC_CHANGE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "OVERRIDE": 0},
+          "BACKCHANNEL": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "OVERRIDE": 0},
+          "TERMINATE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "OVERRIDE": 0}
         }
       }
     },
@@ -341,11 +341,11 @@
       "interruption_config": {
         "MODE": "probabilistic",
         "STRATEGY_MATRIX": {
-          "COMPETITIVE": {"RESUME": 20, "BRIDGE": 10, "YIELD": 70, "EXIT": 0},
-          "COOPERATIVE": {"RESUME": 10, "BRIDGE": 10, "YIELD": 80, "EXIT": 0},
-          "TOPIC_CHANGE": {"RESUME": 10, "BRIDGE": 10, "YIELD": 80, "EXIT": 0},
-          "BACKCHANNEL": {"RESUME": 90, "BRIDGE": 10, "YIELD": 0, "EXIT": 0},
-          "TERMINATE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 0, "EXIT": 100}
+          "COMPETITIVE": {"RESUME": 15, "BRIDGE": 10, "YIELD": 70, "OVERRIDE": 5},
+          "COOPERATIVE": {"RESUME": 5, "BRIDGE": 10, "YIELD": 80, "OVERRIDE": 5},
+          "TOPIC_CHANGE": {"RESUME": 5, "BRIDGE": 10, "YIELD": 80, "OVERRIDE": 5},
+          "BACKCHANNEL": {"RESUME": 85, "BRIDGE": 10, "YIELD": 0, "OVERRIDE": 5},
+          "TERMINATE": {"RESUME": 0, "BRIDGE": 0, "YIELD": 100, "OVERRIDE": 0}
         }
       }
     },

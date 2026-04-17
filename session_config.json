@@ -1,5 +1,5 @@
 {
-  "MAX_TURNS": 5,
+  "MAX_TURNS": 10,
   "SURVEY_MODE": "written",
   "SURVEY_TYPE": "comparative",
   "SET_SIZE": 3,
@@ -8,25 +8,25 @@
     {
       "question": "The way the agent reacted when I interrupted it felt human-like and natural.",
       "expected_type": "matrix_likert",
-      "allowed_options": ["1", "2", "3", "4", "5"],
+      "allowed_options": ["-1", "0", "1"],
       "source": "Reaction Naturalness (Bartneck et al., 2009)"
     },
     {
       "question": "The agent's behavior during the interruption remained consistent with the specific job/role it was playing.",
       "expected_type": "matrix_likert",
-      "allowed_options": ["1", "2", "3", "4", "5"],
+      "allowed_options": ["-1", "0", "1"],
       "source": "Persona Consistency (Gomes et al., 2013)"
     },
     {
       "question": "The transition of speaking turns between myself and the agent felt smooth.",
       "expected_type": "matrix_likert",
-      "allowed_options": ["1", "2", "3", "4", "5"],
+      "allowed_options": ["-1", "0", "1"],
       "source": "Interaction Fluidity (Skantze, 2021)"
     },
     {
       "question": "It took a high amount of effort to successfully gain the conversational floor and communicate my goal.",
       "expected_type": "matrix_likert",
-      "allowed_options": ["1", "2", "3", "4", "5"],
+      "allowed_options": ["-1", "0", "1"],
       "reverse_coded": true,
       "source": "Conversational Frustration (Hart & Staveland, 1988)"
     },
